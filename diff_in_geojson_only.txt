@@ -1,0 +1,54 @@
+# Stations found in GeoJSON but NOT in Ekidata (with Suggestions)
+# Total Count: 51
+--------------------------------------------------------------------------------
+JR松山駅前 	[Found in: 伊予鉄道] 	>> Best Match: 松山駅前 (LCS Len: 4)
+くりこま高原 	[Found in: 東日本旅客鉄道]
+ガーラ湯沢 	[Found in: 東日本旅客鉄道]
+ケーブル八瀬 	[Found in: 京福電気鉄道]
+ケーブル比叡 	[Found in: 京福電気鉄道]
+トヨタモビリティ富山Gスクエア五福前（五福末広町） 	[Found in: 富山地方鉄道] 	>> Best Match: トヨタモビリティ富山 Gスクエア五福前 (LCS Len: 10)
+七戸十和田 	[Found in: 東日本旅客鉄道] 	>> Best Match: 十和田市 (LCS Len: 3)
+上毛高原 	[Found in: 東日本旅客鉄道]
+下祗園 	[Found in: 西日本旅客鉄道]
+出平 	[Found in: 黒部峡谷鉄道]
+吾妻（雲仙市役所前） 	[Found in: 島原鉄道] 	>> Best Match: 吾妻 (LCS Len: 2)
+大手町駅前 	[Found in: 伊予鉄道] 	>> Best Match: 函館駅前 (LCS Len: 2)
+嬉野温泉 	[Found in: 九州旅客鉄道] 	>> Best Match: 湯の川温泉 (LCS Len: 2)
+安中榛名 	[Found in: 東日本旅客鉄道]
+小屋平 	[Found in: 黒部峡谷鉄道] 	>> Best Match: 中小屋 (LCS Len: 2)
+岐阜羽島 	[Found in: 東海旅客鉄道]
+市立体育館前（県庁通） 	[Found in: 熊本市交通局] 	>> Best Match: 市立体育館前 (LCS Len: 6)
+成田空港 	[Found in: 京成電鉄, 東日本旅客鉄道] 	>> Best Match: 成田空港（第１旅客ターミナル） (LCS Len: 4)
+押上 	[Found in: 京成電鉄, 東京地下鉄, 東京都交通局, 東武鉄道] 	>> Best Match: 押上〈スカイツリー前〉 (LCS Len: 2)
+新大牟田 	[Found in: 九州旅客鉄道]
+新尾道 	[Found in: 西日本旅客鉄道]
+新岩国 	[Found in: 西日本旅客鉄道]
+新玉名 	[Found in: 九州旅客鉄道]
+明治神宮前 	[Found in: 東京地下鉄] 	>> Best Match: 明治神宮前〈原宿〉 (LCS Len: 5)
+本庄早稲田 	[Found in: 東日本旅客鉄道]
+本諫早（諫早市役所前） 	[Found in: 島原鉄道] 	>> Best Match: 本諫早 (LCS Len: 3)
+東山・おかでんミュージアム 	[Found in: 岡山電気軌道] 	>> Best Match: 東山・おかでんミュージアム駅 (LCS Len: 13)
+東広島 	[Found in: 西日本旅客鉄道]
+松山市駅 	[Found in: 伊予鉄道] 	>> Best Match: 松山市駅前 (LCS Len: 4)
+柳橋 	[Found in: 黒部峡谷鉄道]
+森石 	[Found in: 黒部峡谷鉄道]
+水沢江刺 	[Found in: 東日本旅客鉄道] 	>> Best Match: 清水沢 (LCS Len: 2)
+江曾島 	[Found in: 東武鉄道]
+泉ケ丘 	[Found in: 泉北高速鉄道] 	>> Best Match: 三国ケ丘 (LCS Len: 2)
+猫又 	[Found in: 黒部峡谷鉄道]
+獨協大学前 	[Found in: 東武鉄道] 	>> Best Match: 獨協大学前〈草加松原〉 (LCS Len: 5)
+白石蔵王 	[Found in: 東日本旅客鉄道]
+神代（鍋島邸前） 	[Found in: 島原鉄道]
+空港第2ビル 	[Found in: 京成電鉄, 東日本旅客鉄道] 	>> Best Match: 空港第２ビル（第２旅客ターミナル） (LCS Len: 3)
+第一イン新湊クロスベイ前 	[Found in: 万葉線] 	>> Best Match: 第一イン新湊 クロスベイ前 (LCS Len: 6)
+笹平 	[Found in: 黒部峡谷鉄道]
+笹塚 	[Found in: 京王電鉄]
+綾川 	[Found in: 高松琴平電気鉄道] 	>> Best Match: 綾川（イオンモール綾川） (LCS Len: 2)
+計算科学センター 	[Found in: 神戸新交通] 	>> Best Match: 計算科学センター（神戸どうぶつ王国・「富岳」前） (LCS Len: 8)
+諫早（雲仙・島原口） 	[Found in: 島原鉄道] 	>> Best Match: 本諫早 (LCS Len: 2)
+越前たけふ 	[Found in: 西日本旅客鉄道]
+遥堪 	[Found in: 一畑電車]
+銭座町 	[Found in: 長崎電気軌道] 	>> Best Match: スタジアムシティノース（銭座町） (LCS Len: 3)
+鴬の森 	[Found in: 能勢電鉄] 	>> Best Match: 鶯の森 (LCS Len: 2)
+鹿島サッカースタジアム 	[Found in: 東日本旅客鉄道, 鹿島臨海鉄道] 	>> Best Match: 鹿島サッカースタジアム（臨） (LCS Len: 11)
+黒部宇奈月温泉 	[Found in: 西日本旅客鉄道] 	>> Best Match: 湯の川温泉 (LCS Len: 2)

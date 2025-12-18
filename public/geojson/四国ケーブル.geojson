@@ -1,0 +1,93 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "八栗ケーブル",
+        "type": "cableline",
+        "uri": "https://uedayou.net/jrslod/%E5%9B%9B%E5%9B%BD%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB/%E5%85%AB%E6%A0%97%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB",
+        "stroke": "#FF0000",
+        "stroke-width": 4,
+        "company": "四国ケーブル"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              134.13424,
+              34.35539
+            ],
+            [
+              134.13358,
+              34.35502
+            ]
+          ],
+          [
+            [
+              134.13919,
+              34.35776
+            ],
+            [
+              134.13789,
+              34.35718
+            ],
+            [
+              134.1357,
+              34.35618
+            ],
+            [
+              134.13424,
+              34.35539
+            ]
+          ],
+          [
+            [
+              134.13994,
+              34.35807
+            ],
+            [
+              134.13919,
+              34.35776
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "八栗登山口",
+        "line": "八栗ケーブル",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E5%9B%9B%E5%9B%BD%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB/%E5%85%AB%E6%A0%97%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB/%E5%85%AB%E6%A0%97%E7%99%BB%E5%B1%B1%E5%8F%A3",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          134.1342,
+          34.35539
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "八栗山上",
+        "line": "八栗ケーブル",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E5%9B%9B%E5%9B%BD%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB/%E5%85%AB%E6%A0%97%E3%82%B1%E3%83%BC%E3%83%96%E3%83%AB/%E5%85%AB%E6%A0%97%E5%B1%B1%E4%B8%8A",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          134.1399,
+          34.35807
+        ]
+      }
+    }
+  ]
+}

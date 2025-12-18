@@ -1,0 +1,85 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "鞍馬山鋼索鉄道",
+        "type": "cableline",
+        "uri": "https://uedayou.net/jrslod/%E9%9E%8D%E9%A6%AC%E5%AF%BA/%E9%9E%8D%E9%A6%AC%E5%B1%B1%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93",
+        "stroke": "#FF0000",
+        "stroke-width": 4,
+        "company": "鞍馬寺"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              135.77288,
+              35.11437
+            ],
+            [
+              135.77287,
+              35.11473
+            ]
+          ],
+          [
+            [
+              135.77281,
+              35.11626
+            ],
+            [
+              135.77281,
+              35.11662
+            ]
+          ],
+          [
+            [
+              135.77287,
+              35.11473
+            ],
+            [
+              135.77281,
+              35.11626
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "山門",
+        "line": "鞍馬山鋼索鉄道",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E9%9E%8D%E9%A6%AC%E5%AF%BA/%E9%9E%8D%E9%A6%AC%E5%B1%B1%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93/%E5%B1%B1%E9%96%80",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.7729,
+          35.11437
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "多宝塔",
+        "line": "鞍馬山鋼索鉄道",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E9%9E%8D%E9%A6%AC%E5%AF%BA/%E9%9E%8D%E9%A6%AC%E5%B1%B1%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93/%E5%A4%9A%E5%AE%9D%E5%A1%94",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.7728,
+          35.11626
+        ]
+      }
+    }
+  ]
+}

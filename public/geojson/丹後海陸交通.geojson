@@ -1,0 +1,89 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "天橋立鋼索鉄道",
+        "type": "cableline",
+        "uri": "https://uedayou.net/jrslod/%E4%B8%B9%E5%BE%8C%E6%B5%B7%E9%99%B8%E4%BA%A4%E9%80%9A/%E5%A4%A9%E6%A9%8B%E7%AB%8B%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93",
+        "stroke": "#FF0000",
+        "stroke-width": 4,
+        "company": "丹後海陸交通"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              135.19531,
+              35.58353
+            ],
+            [
+              135.19524,
+              35.5832
+            ]
+          ],
+          [
+            [
+              135.19585,
+              35.58637
+            ],
+            [
+              135.1958,
+              35.58604
+            ]
+          ],
+          [
+            [
+              135.1958,
+              35.58604
+            ],
+            [
+              135.19544,
+              35.58409
+            ],
+            [
+              135.19531,
+              35.58353
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "府中",
+        "line": "天橋立鋼索鉄道",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E4%B8%B9%E5%BE%8C%E6%B5%B7%E9%99%B8%E4%BA%A4%E9%80%9A/%E5%A4%A9%E6%A9%8B%E7%AB%8B%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93/%E5%BA%9C%E4%B8%AD",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.1953,
+          35.58353
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "傘松",
+        "line": "天橋立鋼索鉄道",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E4%B8%B9%E5%BE%8C%E6%B5%B7%E9%99%B8%E4%BA%A4%E9%80%9A/%E5%A4%A9%E6%A9%8B%E7%AB%8B%E9%8B%BC%E7%B4%A2%E9%89%84%E9%81%93/%E5%82%98%E6%9D%BE",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          135.1959,
+          35.58637
+        ]
+      }
+    }
+  ]
+}

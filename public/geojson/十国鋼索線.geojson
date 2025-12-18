@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "十国鋼索線",
+        "type": "cableline",
+        "uri": "https://uedayou.net/jrslod/%E5%8D%81%E5%9B%BD%E9%8B%BC%E7%B4%A2%E7%B7%9A/%E5%8D%81%E5%9B%BD%E9%8B%BC%E7%B4%A2%E7%B7%9A",
+        "stroke": "#FF0000",
+        "stroke-width": 4,
+        "company": "十国鋼索線"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              139.04056,
+              35.12768
+            ],
+            [
+              139.03921,
+              35.12768
+            ],
+            [
+              139.03763,
+              35.12767
+            ]
+          ],
+          [
+            [
+              139.0411,
+              35.12768
+            ],
+            [
+              139.04056,
+              35.12768
+            ]
+          ],
+          [
+            [
+              139.03763,
+              35.12767
+            ],
+            [
+              139.03723,
+              35.12769
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

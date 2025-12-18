@@ -1,0 +1,128 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "芝山鉄道線",
+        "type": "line",
+        "uri": "https://uedayou.net/jrslod/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93%E7%B7%9A",
+        "stroke": "#FF0000",
+        "stroke-width": 4,
+        "company": "芝山鉄道",
+        "icon": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Number_prefix_Shibayama.svg"
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [
+              140.38774,
+              35.76902
+            ],
+            [
+              140.39002,
+              35.76587
+            ],
+            [
+              140.39016,
+              35.76481
+            ],
+            [
+              140.39063,
+              35.76344
+            ],
+            [
+              140.39147,
+              35.76207
+            ],
+            [
+              140.39252,
+              35.76115
+            ],
+            [
+              140.393,
+              35.76006
+            ],
+            [
+              140.39411,
+              35.7585
+            ],
+            [
+              140.39582,
+              35.75621
+            ],
+            [
+              140.39676,
+              35.75525
+            ],
+            [
+              140.39747,
+              35.7549
+            ],
+            [
+              140.39895,
+              35.75429
+            ]
+          ],
+          [
+            [
+              140.39895,
+              35.75429
+            ],
+            [
+              140.40027,
+              35.75375
+            ]
+          ],
+          [
+            [
+              140.38774,
+              35.76902
+            ],
+            [
+              140.38676,
+              35.77035
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "東成田",
+        "line": "芝山鉄道線",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93%E7%B7%9A/%E6%9D%B1%E6%88%90%E7%94%B0",
+        "transfers": [
+          "京成東成田線"
+        ]
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.3868,
+          35.77035
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "芝山千代田",
+        "line": "芝山鉄道線",
+        "type": "station",
+        "uri": "https://uedayou.net/jrslod/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93/%E8%8A%9D%E5%B1%B1%E9%89%84%E9%81%93%E7%B7%9A/%E8%8A%9D%E5%B1%B1%E5%8D%83%E4%BB%A3%E7%94%B0",
+        "transfers": []
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          140.399,
+          35.75429
+        ]
+      }
+    }
+  ]
+}
