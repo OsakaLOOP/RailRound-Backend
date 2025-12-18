@@ -514,8 +514,20 @@ if __name__ == "__main__":
     print(f"Worker Created: {worker.name} | Type: {worker.type}")
     print(f"Initial Status: {worker.status}")
     
-    print("\n--- Running Worker ---")
-    worker.run()
+    print("\n--- Running Worker (Threaded) ---")
+    worker_thread = threading.Thread(target=worker.run)
+    worker_thread.start()
+
+    # Simple Monitor Loop
+    while worker_thread.is_alive():
+        time.sleep(1)
+        view = worker.get_dashboard_view()
+        prog = view['progress']
+        print(f"[Monitor] Status: {view['status_text']} | "
+              f"Progress: {prog['current']}/{prog['total']} ({prog['percent']}%) | "
+              f"Speed: {prog['speed']}/s | ETA: {prog['eta_seconds']}s")
+
+    worker_thread.join()
     
     print("\n--- Final Status ---")
     print(worker.status)
