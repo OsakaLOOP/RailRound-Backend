@@ -101,6 +101,11 @@ class ProgressTracker:
             if item is not None:
                 self._item = item
 
+    def add_to_total(self, n: int):
+        '''增加总数'''
+        with self._lock:
+            self.total += n
+
     def recErr(self,err:str):
         with self._lock:
             self._errors.append(err)
@@ -258,7 +263,7 @@ class GeoJsonWorker(WorkerProcess):
         with open(self.config_file, 'r', encoding='utf-8') as f:
             companies = json.load(f)
 
-        self.tracker.start(len(companies))
+        self.tracker.start(0)
 
         processed_count = 0
         skipped_count = 0
@@ -269,15 +274,11 @@ class GeoJsonWorker(WorkerProcess):
             
             if os.path.exists(filename):
                 skipped_count += 1
-                self.tracker.increment()
-                self.tracker.update(processed_count + skipped_count)
                 continue
             
             # 执行生成逻辑
             self._generate_for_company(company_name)
             processed_count += 1
-            self.tracker.increment()
-            self.tracker.update(processed_count + skipped_count)
             time.sleep(2) # 礼貌延迟
 
         result_msg = f"Completed. Processed: {processed_count}, Skipped: {skipped_count}"
@@ -294,6 +295,7 @@ class GeoJsonWorker(WorkerProcess):
         # 获取线路
         lines = self._get_company_lines(company_name)
         self.logger.info(f"Found {len(lines)} lines for {company_name}")
+        self.tracker.add_to_total(len(lines))
         
         for line_uri in lines:
             line_name = urllib.parse.unquote(line_uri.split('/')[-1])
@@ -308,7 +310,9 @@ class GeoJsonWorker(WorkerProcess):
 
             # 2. 处理车站
             g_line = self._fetch_graph(line_uri)
-            if not g_line: continue
+            if not g_line:
+                self.tracker.increment(line_name)
+                continue
             
             station_uris = [str(o) for s, p, o in g_line.triples((None, self.WDT.P527, None))]
             self.logger.debug(f"Found {len(station_uris)} stations for line {line_name}")
@@ -320,6 +324,8 @@ class GeoJsonWorker(WorkerProcess):
                     if not existing:
                         all_features.append(feat)
                         feature_map[st_uri] = feat
+
+            self.tracker.increment(line_name)
 
         # 保存文件
         self.logger.info(f"Saving {len(all_features)} features to {filename}")
