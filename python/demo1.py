@@ -329,10 +329,28 @@ class GeoJsonWorker(WorkerProcess):
     def _fetch_graph(self, url):
         safe_url = self._get_encoded_uri(url)
         self.logger.debug(f"Fetching graph: {safe_url}")
+
         try:
             resp = self.session.get(safe_url, timeout=10)
             resp.raise_for_status()
+        except (requests.exceptions.ProxyError, requests.exceptions.SSLError) as e:
+            if self.session.trust_env:
+                self.logger.warning(f"Proxy/SSL Error with {url}: {e}. Disabling system proxy and retrying...")
+                self.session.trust_env = False
+                try:
+                    resp = self.session.get(safe_url, timeout=10)
+                    resp.raise_for_status()
+                except Exception as e2:
+                    self.logger.warning(f"Failed to fetch graph {url} (direct): {e2}")
+                    return None
+            else:
+                self.logger.warning(f"Failed to fetch graph {url}: {e}")
+                return None
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch graph {url}: {e}")
+            return None
             
+        try:
             # 清洗非法字符
             raw_text = resp.text
             def encode_match(match):
@@ -343,7 +361,7 @@ class GeoJsonWorker(WorkerProcess):
             g.parse(data=clean_text, format="turtle", publicID=safe_url)
             return g
         except Exception as e:
-            self.logger.warning(f"Failed to fetch graph {url}: {e}")
+            self.logger.warning(f"Failed to parse graph {url}: {e}")
             return None
 
     def _get_company_lines(self, company_name):
