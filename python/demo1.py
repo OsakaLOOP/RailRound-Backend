@@ -97,7 +97,7 @@ class ProgressTracker:
     def increment(self, item= None):
         '''进度+1'''
         with self._lock:
-            self._current += 1
+            self.current += 1
             if item is not None:
                 self._item = item
 
@@ -111,7 +111,7 @@ class WorkerProcess(ABC):
         self.name = name
         self.period = period if period>=3600 else 3600 # 部分任务耗时, 周期太短干扰调度
         self.type = type_str
-        self.log_dir = './static' + self.name + '_logs'
+        self.log_dir = 'logs'
         self.max_retry = max_retry
         
         self.logger = self._setup_logger()
@@ -237,59 +237,67 @@ class GeoJsonWorker(WorkerProcess):
     ODPT = Namespace("http://vocab.odpt.org/ODPT/") 
     SCHEMA = Namespace("http://schema.org/")
 
-    def __init__(self, name, period, config_file=r'D:\PROJ\GIT\RailRound\dist\company_data.json'):
+    def __init__(self, name, period, config_file='public/company_data.json', output_dir='test_geojson_output/'):
         # 传递类型为 "geojson_process"
         super().__init__(name, period, "geojson_process")
         self.config_file = config_file
+        self.output_dir = output_dir
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
 
-    def run(self):
+    def trigger(self):
         '''执行爬虫与生成逻辑'''
-        self._pre_run()
-        try:
-            # 1. 加载配置
-            if not os.path.exists(self.config_file):
-                raise FileNotFoundError(f"Config file {self.config_file} not found")
-            
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                companies = json.load(f)
-            
-            processed_count = 0
-            skipped_count = 0
-            
-            # 2. 遍历处理
-            for company_name in companies.keys():
-                filename = f"{company_name}.geojson"
-                
-                if os.path.exists(filename):
-                    skipped_count += 1
-                    continue
-                
-                # 执行生成逻辑
-                self._generate_for_company(company_name)
-                processed_count += 1
-                time.sleep(2) # 礼貌延迟
+        # 1. 加载配置
+        if not os.path.exists(self.config_file):
+            raise FileNotFoundError(f"Config file {self.config_file} not found")
 
-            result_msg = f"Completed. Processed: {processed_count}, Skipped: {skipped_count}"
-            self._post_run(result=result_msg)
+        # Ensure output directory exists
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
 
-        except Exception as e:
-            print(f"[Worker Error] {e}")
-            self._post_run(result=None, error=e)
+        with open(self.config_file, 'r', encoding='utf-8') as f:
+            companies = json.load(f)
+
+        self.tracker.start(len(companies))
+
+        processed_count = 0
+        skipped_count = 0
+
+        # 2. 遍历处理
+        for company_name in companies.keys():
+            filename = os.path.join(self.output_dir, f"{company_name}.geojson")
+            
+            if os.path.exists(filename):
+                skipped_count += 1
+                self.tracker.increment()
+                self.tracker.update(processed_count + skipped_count)
+                continue
+            
+            # 执行生成逻辑
+            self._generate_for_company(company_name)
+            processed_count += 1
+            self.tracker.increment()
+            self.tracker.update(processed_count + skipped_count)
+            time.sleep(2) # 礼貌延迟
+
+        result_msg = f"Completed. Processed: {processed_count}, Skipped: {skipped_count}"
+        return result_msg
 
     # --- 内部核心逻辑 (封装原脚本函数) ---
 
     def _generate_for_company(self, company_name):
-        filename = f"{company_name}.geojson"
+        self.logger.info(f"Generating for company: {company_name}")
+        filename = os.path.join(self.output_dir, f"{company_name}.geojson")
         all_features = []
         feature_map = {}
 
         # 获取线路
         lines = self._get_company_lines(company_name)
+        self.logger.info(f"Found {len(lines)} lines for {company_name}")
         
         for line_uri in lines:
             line_name = urllib.parse.unquote(line_uri.split('/')[-1])
+            self.logger.debug(f"Processing line: {line_name}")
             
             # 1. 处理线路轨迹
             if line_uri not in feature_map:
@@ -303,6 +311,7 @@ class GeoJsonWorker(WorkerProcess):
             if not g_line: continue
             
             station_uris = [str(o) for s, p, o in g_line.triples((None, self.WDT.P527, None))]
+            self.logger.debug(f"Found {len(station_uris)} stations for line {line_name}")
             
             for st_uri in station_uris:
                 existing = feature_map.get(st_uri)
@@ -313,11 +322,13 @@ class GeoJsonWorker(WorkerProcess):
                         feature_map[st_uri] = feat
 
         # 保存文件
+        self.logger.info(f"Saving {len(all_features)} features to {filename}")
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump({ "type": "FeatureCollection", "features": all_features }, f, ensure_ascii=False, indent=2)
 
     def _fetch_graph(self, url):
         safe_url = self._get_encoded_uri(url)
+        self.logger.debug(f"Fetching graph: {safe_url}")
         try:
             resp = self.session.get(safe_url, timeout=10)
             resp.raise_for_status()
@@ -331,7 +342,8 @@ class GeoJsonWorker(WorkerProcess):
             g = Graph()
             g.parse(data=clean_text, format="turtle", publicID=safe_url)
             return g
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch graph {url}: {e}")
             return None
 
     def _get_company_lines(self, company_name):
@@ -475,12 +487,30 @@ def loop(workers):
 # 3. 运行测试
 # ----------------------------------------------------
 if __name__ == "__main__":
-    # 创建模拟配置文件
-    with open("company_data.json", "w") as f:
-        json.dump({"Seibu": {}}, f) # 测试用
+    # Load real config
+    try:
+        with open("public/company_data.json", "r", encoding='utf-8') as f:
+            full_config = json.load(f)
+    except FileNotFoundError:
+        print("Error: public/company_data.json not found.")
+        exit(1)
+
+    # Create a test config with a subset (e.g., just one or two companies)
+    # Using '由利高原鉄道' as it seems small enough, or '西武鉄道' (Seibu) from original demo
+    test_companies = {k: full_config[k] for k in list(full_config.keys())[:1]}
+    # Or specifically pick one if needed, e.g. "由利高原鉄道"
+
+    output_dir = "test_geojson_output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    test_config_path = os.path.join(output_dir, "test_config.json")
+    with open(test_config_path, "w", encoding='utf-8') as f:
+        json.dump(test_companies, f, ensure_ascii=False, indent=2)
 
     # 实例化并运行
-    worker = GeoJsonWorker(name="GeojsonWorker", period=360000)
+    print(f"Starting test run with config: {test_config_path}")
+    worker = GeoJsonWorker(name="GeojsonWorker", period=360000, config_file=test_config_path, output_dir=output_dir)
     print(f"Worker Created: {worker.name} | Type: {worker.type}")
     print(f"Initial Status: {worker.status}")
     
