@@ -28,6 +28,24 @@ class GeometryCleaner:
     def distance(self, p1, p2):
         return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
+    def calculate_angle_score(self, vec1, vec2):
+        """
+        Calculate cosine of the angle between two vectors.
+        Returns a value between -1.0 (180 deg) and 1.0 (0 deg).
+        Closer to 1.0 means smoother continuation.
+        """
+        # Normalize vectors
+        len1 = math.sqrt(vec1[0]**2 + vec1[1]**2)
+        len2 = math.sqrt(vec2[0]**2 + vec2[1]**2)
+
+        if len1 == 0 or len2 == 0:
+            return -1.0 # Treat zero length vectors as bad matches
+
+        return (vec1[0]*vec2[0] + vec1[1]*vec2[1]) / (len1 * len2)
+
+    def get_vector(self, p_start, p_end):
+        return [p_end[0] - p_start[0], p_end[1] - p_start[1]]
+
     def seam_segments(self, raw_segments):
         # raw_segments is a list of lists of points [[x,y], ...]
         if not raw_segments:
@@ -39,44 +57,98 @@ class GeometryCleaner:
 
         while pool:
             # Start a new path with the first segment in the pool
+            # Heuristic: picking longest segment first might be better,
+            # but let's stick to first available for stability unless optimized further.
             current_path = pool.pop(0)
             changed = True
 
             while changed:
                 changed = False
-                # Try to find a segment that connects to current_path's start or end
-                # Check strict equality first, maybe fuzzy later if needed
 
+                # Check connection at START of path
                 start_pt = current_path[0]
+                # Check connection at END of path
                 end_pt = current_path[-1]
 
                 best_match_idx = -1
+                best_match_score = -2.0 # Cosine similarity range is [-1, 1]
                 match_type = None # 'start-start', 'start-end', 'end-start', 'end-end'
 
+                # Tolerance for float comparison (approx 11m if lat/lon)
+                tol = 1e-4
+
+                # Vectors for current path ends
+                # Start vector: pointing INWARDS from start (p1 -> p0 is outward, we want inward flow p0->p1? No, we want continuity)
+                # If we extend backwards from start: new_seg -> current_path
+                # Vector leaving new_seg = (new_end - new_prev)
+                # Vector entering current_path = (curr_1 - curr_0)
+                # We want these to align.
+
+                if len(current_path) >= 2:
+                    vec_start_out = self.get_vector(current_path[1], current_path[0]) # Pointing out from start
+                    vec_end_out = self.get_vector(current_path[-2], current_path[-1]) # Pointing out from end
+                else:
+                    vec_start_out = [0, 0]
+                    vec_end_out = [0, 0]
+
                 for i, seg in enumerate(pool):
+                    if len(seg) < 2: continue # Ignore single points
+
                     s_start = seg[0]
                     s_end = seg[-1]
 
-                    # Tolerance for float comparison
-                    tol = 1e-5
-
+                    # Candidate 1: Connect seg start to path end (end-start)
                     if self.distance(end_pt, s_start) < tol:
-                        best_match_idx = i
-                        match_type = 'end-start'
-                        break
-                    elif self.distance(end_pt, s_end) < tol:
-                        best_match_idx = i
-                        match_type = 'end-end' # Need to reverse seg
-                        break
-                    elif self.distance(start_pt, s_end) < tol:
-                        best_match_idx = i
-                        match_type = 'start-end'
-                        break
-                    elif self.distance(start_pt, s_start) < tol:
-                        best_match_idx = i
-                        match_type = 'start-start' # Need to reverse seg
-                        break
+                        # Vector entering junction from path: vec_end_out
+                        # Vector leaving junction into seg: s[1] - s[0]
+                        vec_seg_in = self.get_vector(s_start, seg[1])
+                        score = self.calculate_angle_score(vec_end_out, vec_seg_in)
 
+                        if score > best_match_score:
+                            best_match_score = score
+                            best_match_idx = i
+                            match_type = 'end-start'
+
+                    # Candidate 2: Connect seg end to path end (end-end) -> Reverse seg
+                    if self.distance(end_pt, s_end) < tol:
+                        # Vector leaving junction into reversed seg: s[-2] - s[-1]
+                        vec_seg_in = self.get_vector(s_end, seg[-2])
+                        score = self.calculate_angle_score(vec_end_out, vec_seg_in)
+
+                        if score > best_match_score:
+                            best_match_score = score
+                            best_match_idx = i
+                            match_type = 'end-end'
+
+                    # Candidate 3: Connect seg end to path start (start-end)
+                    if self.distance(start_pt, s_end) < tol:
+                        # Vector leaving junction into path: vec_start_in = (curr[1] - curr[0]) -- wait, logic inverse
+                        # We are moving form seg -> path.
+                        # Vector exiting seg: s_end - s_prev
+                        # Vector entering path: curr[1] - curr[0] (which is -vec_start_out)
+                        vec_seg_out = self.get_vector(seg[-2], s_end)
+                        vec_path_in = self.get_vector(start_pt, current_path[1])
+                        score = self.calculate_angle_score(vec_seg_out, vec_path_in)
+
+                        if score > best_match_score:
+                            best_match_score = score
+                            best_match_idx = i
+                            match_type = 'start-end'
+
+                    # Candidate 4: Connect seg start to path start (start-start) -> Reverse seg
+                    if self.distance(start_pt, s_start) < tol:
+                        # Vector exiting reversed seg: s_start - s_next
+                        vec_seg_out = self.get_vector(seg[1], s_start)
+                        vec_path_in = self.get_vector(start_pt, current_path[1])
+                        score = self.calculate_angle_score(vec_seg_out, vec_path_in)
+
+                        if score > best_match_score:
+                            best_match_score = score
+                            best_match_idx = i
+                            match_type = 'start-start'
+
+                # Apply the best match if one exists
+                # We can enforce a minimum score if we want to avoid sharp turns, e.g. > -0.5
                 if best_match_idx != -1:
                     seg = pool.pop(best_match_idx)
                     if match_type == 'end-start':
@@ -117,12 +189,7 @@ class GeometryCleaner:
                 length += self.distance(path[j], path[j+1])
 
             # Identify round lines (start ~= end)
-            is_loop = self.distance(path[0], path[-1]) < 1e-5
-
-            # Auto cut loop: If it's a loop, ensure it stays as a LineString (which it is).
-            # The user asked to "auto cut a round line".
-            # If it's a perfect loop, the start and end are the same.
-            # We treat it as a continuous line.
+            is_loop = self.distance(path[0], path[-1]) < 1e-4
 
             print(f"  Path {i}: {len(path)} points, Length unit ~{length:.4f}, Loop: {is_loop}")
 
