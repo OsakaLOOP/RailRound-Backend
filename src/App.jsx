@@ -47,9 +47,6 @@ function App() {
               >
                 Generate Log (Count: {count})
               </button>
-
-              {/* 挂载 Console 组件 */}
-              <ConsolePanel />
             </div>
           </div>
         )}
@@ -60,6 +57,9 @@ function App() {
             <WorkerScheduler />
           </div>
         )}
+
+        {/* Global Console Panel - Always visible */}
+        <ConsolePanel />
 
       </div>
     </div>

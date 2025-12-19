@@ -111,8 +111,15 @@ webview_handler = WebviewHandler()
 
 webview_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 
+# Attach webview handler to root logger so it captures everything including workers
 logger.addHandler(webview_handler)
 frontend_logger.addHandler(python_handler)
+
+# Also expose webview_handler globally so workers can find it if needed (though root logger propagation usually suffices)
+# But workers use separate loggers "Worker.xxx".
+# If they propagate (default is True), they hit root logger.
+# But worker_base.py does `logger = logging.getLogger(...)`.
+# Let's ensure root logger level allows debug if needed, though workers set their own level.
 
 #模拟
 def run(window):
