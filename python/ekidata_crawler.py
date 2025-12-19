@@ -1,14 +1,14 @@
-#import time
 import requests
 import webview
 import os
 import http.cookies
-import logging
+import time
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from worker_base import WorkerProcess
 
-# --- 配置区域 ---
-class Config:
+class EkidataWorker(WorkerProcess):
+    # --- 配置区域 ---
     LOGIN_URL = "https://ekidata.jp//dl/"
     TARGET_URL = "https://ekidata.jp/dl/?p=1"
     USERNAME = "mywrh15@126.com"
@@ -22,57 +22,117 @@ class Config:
     DOWNLOAD_DIR = "./downloads"
     DEBUG_MODE = True  # 设置为 False 可在屏幕上显示浏览器窗口进行调试
 
-# --- 日志设置 ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [Ekidata] - %(message)s',
-    datefmt='%H:%M:%S'
-)
-logger = logging.getLogger()
-
-class CrawlerService:
-    def __init__(self):
+    def __init__(self, name, period, max_retry=3):
+        super().__init__(name, period, "ekidata_crawler", max_retry)
         self.session = requests.Session()
         # 伪装 User-Agent 防止被服务端拒绝
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         })
 
+    def trigger(self):
+        if not os.path.exists(self.DOWNLOAD_DIR):
+            os.makedirs(self.DOWNLOAD_DIR)
+
+        # 1. 获取并应用 Cookie
+        cookies = self._get_cookies_via_webview()
+        if not cookies:
+            self.logger.error("未获取到 Cookie，终止任务")
+            raise Exception("Failed to get cookies")
+
+        self.session.cookies.update(cookies)
+
+        # 2. 获取列表页
+        self.logger.info(f"访问数据页: {self.TARGET_URL}")
+        resp = self.session.get(self.TARGET_URL)
+        if resp.status_code != 200:
+            self.logger.error(f"访问失败 Code: {resp.status_code}")
+            raise Exception(f"Failed to access target URL: {resp.status_code}")
+
+        # 3. 解析与下载
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        links = soup.select("a[href*='f.php']") # 锚点定位
+
+        self.logger.info(f"解析到 {len(links)} 个潜在文件")
+        self.tracker.start(len(links), self.run_id)
+
+        for link in links:
+            href = link.get('href','')
+            full_url = urljoin(self.TARGET_URL, str(href))
+
+            # 文件名提取逻辑
+            try:
+                # 假设 url 结构: f.php?d=20250122&...
+                date_part = str(href).split('d=')[1].split('&')[0]
+                filename = f"ekidata_{date_part}.csv"
+            except IndexError:
+                filename = f"ekidata_{int(time.time())}.csv"
+
+            save_path = os.path.join(self.DOWNLOAD_DIR, filename)
+
+            if os.path.exists(save_path):
+                self.logger.info(f"跳过已存在: {filename}")
+                self.tracker.increment(filename)
+                continue
+
+            self._download_file(full_url, save_path)
+            self.tracker.increment(filename)
+            time.sleep(2) # 礼貌延时
+
+        return f"Completed. Downloaded/Checked {len(links)} files."
+
     def _get_cookies_via_webview(self):
         """启动(隐形)浏览器完成认证并提取Cookie"""
-        logger.info("启动 Webview 进行认证...")
+        self.logger.info("启动 Webview 进行认证...")
         cookies = []
         
-        # 创建窗口
+        # 创建窗口 (注意：不要调用 webview.start()，因为主线程应该已经在运行它)
         window = webview.create_window(
             'Auth Worker',
-            Config.LOGIN_URL,
-            hidden=Config.DEBUG_MODE, # 调试模式下隐藏，非调试模式显示
+            self.LOGIN_URL,
+            hidden=self.DEBUG_MODE, # 调试模式下隐藏，非调试模式显示
             width=800, height=600
         )
 
-        def auth_logic(w):
+        # 定义认证逻辑 (注入 JS)
+        def auth_logic():
             time.sleep(3) # 等待DOM加载
             
-            logger.info("注入登录脚本...")
+            self.logger.info("注入登录脚本...")
             js = f"""
-                document.querySelector("{Config.SELECTOR_USER}").value = "{Config.USERNAME}";
-                document.querySelector("{Config.SELECTOR_PASS}").value = "{Config.PASSWORD}";
-                document.querySelector("{Config.SELECTOR_BTN}").click();
+                document.querySelector("{self.SELECTOR_USER}").value = "{self.USERNAME}";
+                document.querySelector("{self.SELECTOR_PASS}").value = "{self.PASSWORD}";
+                document.querySelector("{self.SELECTOR_BTN}").click();
             """
-            w.evaluate_js(js)
+            window.evaluate_js(js)
             
             # 等待跳转和Cookie写入
             time.sleep(4) 
             
-            raw_cookies = w.get_cookies()
+            raw_cookies = window.get_cookies()
             for c in raw_cookies:
                 cookies.append(c)
             
-            logger.info(f"获取到 {len(cookies)} 个 Cookie，关闭窗口...")
-            w.destroy()
+            self.logger.info(f"获取到 {len(cookies)} 个 Cookie，关闭窗口...")
+            window.destroy()
 
-        webview.start(func=auth_logic, args=(window,), private_mode=False)
+        # 在当前线程执行认证逻辑，等待窗口操作完成
+        # 注意：这里假设 webview 循环在主线程运行，而我们在工作线程
+        # window.evaluate_js 可能需要 GUI 循环的支持，如果 webview.start() 没跑，这会卡住或无效。
+        # 假设 test.py 已经在跑 webview.start()。
+
+        # 由于 evaluate_js 和 get_cookies 可能需要在 UI 线程执行，pywebview 的多线程支持有限。
+        # 但通常 create_window 返回的 window 对象的方法是线程安全的或者是被代理的。
+
+        # 我们稍微等待一下窗口创建
+        time.sleep(1)
+
+        try:
+            auth_logic()
+        except Exception as e:
+            self.logger.error(f"Auth logic error: {e}")
+            if window:
+                window.destroy()
         
         # 转换 pywebview cookie 对象为 dict
         cookie_dict = {}
@@ -83,62 +143,19 @@ class CrawlerService:
                     # SimpleCookie 像字典一样存储 Morsel 对象
                     for key, morsel in c.items():
                         cookie_dict[key] = morsel.value
-                        print(c.output())
-                        logger.info(f"解析到 Cookie (SimpleCookie): {key}={morsel.value[:5]}...")
                 else:
-                    raise ValueError(f'Cookie 类型不正确 - {type(c)}')
+                    # 尝试直接读取 key/value 属性
+                    if hasattr(c, 'name') and hasattr(c, 'value'):
+                        cookie_dict[c.name] = c.value
+                    elif hasattr(c, 'key') and hasattr(c, 'value'):
+                         cookie_dict[c.key] = c.value
+                    else:
+                        self.logger.warning(f"未知 Cookie 类型: {type(c)}")
                     
             except Exception as e:
-                logger.warning(f"无法解析单个Cookie: {c} - {e}")
+                self.logger.warning(f"无法解析单个Cookie: {c} - {e}")
         
         return cookie_dict
-        
-
-    def run(self):
-        if not os.path.exists(Config.DOWNLOAD_DIR):
-            os.makedirs(Config.DOWNLOAD_DIR)
-
-        # 1. 获取并应用 Cookie
-        cookies = self._get_cookies_via_webview()
-        if not cookies:
-            logger.error("未获取到 Cookie，终止任务")
-            return
-        self.session.cookies.update(cookies)
-
-        # 2. 获取列表页
-        logger.info(f"访问数据页: {Config.TARGET_URL}")
-        resp = self.session.get(Config.TARGET_URL)
-        if resp.status_code != 200:
-            logger.error(f"访问失败 Code: {resp.status_code}")
-            return
-
-        # 3. 解析与下载
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        links = soup.select("a[href*='f.php']") # 锚点定位
-        
-        logger.info(f"解析到 {len(links)} 个潜在文件")
-
-        for link in links:
-            href = link.get('href','')
-            print(link)
-            full_url = urljoin(Config.TARGET_URL,  str(href))
-            
-            # 文件名提取逻辑
-            try:
-                # 假设 url 结构: f.php?d=20250122&...
-                date_part = str(href).split('d=')[1].split('&')[0]
-                filename = f"ekidata_{date_part}.csv"
-            except IndexError:
-                filename = f"ekidata_{int(time.time())}.csv"
-
-            save_path = os.path.join(Config.DOWNLOAD_DIR, filename)
-            
-            if os.path.exists(save_path):
-                logger.info(f"跳过已存在: {filename}")
-                continue
-
-            self._download_file(full_url, save_path)
-            time.sleep(2) # 礼貌延时
 
     def _download_file(self, url, path):
         try:
@@ -146,16 +163,12 @@ class CrawlerService:
                 r.raise_for_status()
                 # 检查是否是 CSV 类型 (防止下载到报错 HTML)
                 if 'text/html' in r.headers.get('Content-Type', ''):
-                    logger.warning(f"下载内容疑似为HTML而非文件: {url}")
+                    self.logger.warning(f"下载内容疑似为HTML而非文件: {url}")
                     return
 
                 with open(path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            logger.info(f"下载成功: {os.path.basename(path)}")
+            self.logger.info(f"下载成功: {os.path.basename(path)}")
         except Exception as e:
-            logger.error(f"下载出错 {url}: {e}")
-
-if __name__ == "__main__":
-    crawler = CrawlerService()
-    crawler.run()
+            self.logger.error(f"下载出错 {url}: {e}")
