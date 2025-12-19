@@ -261,7 +261,8 @@ class line:
         self.company = company
         self.type = data["type"]
         self.id = None
-        self.rawGeometry = data['geometry']
+        # data['geometry'] is already the coordinates list passed from process_line_feature
+        self.raw_geometry = data['geometry']
         self.odptUri = data['uri']
         self.stations = []
 
@@ -298,6 +299,7 @@ class station:
         self.line = None
             
         self.location = Point(data["location"])
+        self.raw_geometry = data["location"]
         self.group = None
         self.transferLst = data.get("transferLst", [])
         
@@ -322,10 +324,11 @@ class station:
     __repr__ = __str__
     
 class stationGroup:
-    def __init__(self, lst):
-        self.id = ""
-        self.transferLst = lst
-        
+    def __init__(self, id, name, location, station_ids):
+        self.id = id
+        self.name = name
+        self.location = location
+        self.station_ids = station_ids
         
     def in_group(self, station):
         pass
@@ -344,6 +347,44 @@ class RailwayDataService:
         self.companyList = []
         self.stationGroupList = []
         self.company_ekidata = None
+
+    def load_station_groups(self):
+        """Loads station groups from Ekidata CSV."""
+        station_csv_path = os.path.join(self.ekidata_dir, "station20251211free.csv")
+        if not os.path.exists(station_csv_path):
+            logger.warning(f"Station CSV not found at {station_csv_path}, skipping station group loading.")
+            return
+
+        try:
+            df = load_csv(station_csv_path)
+            if df.empty:
+                logger.warning("Station CSV is empty.")
+                return
+
+            # Group by station_g_cd
+            grouped = df.groupby('station_g_cd')
+
+            temp_group_list = []
+            for g_cd, group_df in grouped:
+                first_row = group_df.iloc[0]
+                name = getattr(first_row, 'station_name', 'Unknown')
+
+                # Calculate average location
+                avg_lon = group_df['lon'].mean()
+                avg_lat = group_df['lat'].mean()
+                location = (avg_lon, avg_lat)
+
+                # Get list of station_cds
+                station_ids = group_df['station_cd'].tolist()
+
+                sg = stationGroup(id=g_cd, name=name, location=location, station_ids=station_ids)
+                temp_group_list.append(sg)
+
+            self.stationGroupList = temp_group_list
+            logger.info(f"Loaded {len(self.stationGroupList)} station groups.")
+
+        except Exception as e:
+            logger.error(f"Error loading station groups: {e}")
 
     def build(self):
         """Builds the in-memory object graph and persists to SQLite."""
@@ -385,6 +426,9 @@ class RailwayDataService:
         self.companyList = temp_company_list
         logger.info(f"Built {len(self.companyList)} companies.")
 
+        # Load station groups
+        self.load_station_groups()
+
         self.save_to_db()
 
     def save_to_db(self):
@@ -411,6 +455,8 @@ class RailwayDataService:
                 type TEXT,
                 stroke TEXT,
                 stroke_width REAL,
+                raw_geometry TEXT,
+                segments TEXT,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
             )
         ''')
@@ -423,7 +469,18 @@ class RailwayDataService:
                 location_x REAL,
                 location_y REAL,
                 transfers TEXT,
+                raw_geometry TEXT,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS station_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                location_x REAL,
+                location_y REAL,
+                station_ids TEXT
             )
         ''')
 
@@ -432,20 +489,28 @@ class RailwayDataService:
         cursor.execute("DELETE FROM stations")
         cursor.execute("DELETE FROM lines")
         cursor.execute("DELETE FROM companies")
+        cursor.execute("DELETE FROM station_groups")
 
         for c in self.companyList:
             cursor.execute("INSERT INTO companies (id, region, type, cd, rr) VALUES (?, ?, ?, ?, ?)",
                            (c.id, c.region, c.type, c.cd, c.rr))
 
             for l in c.lineList:
-                cursor.execute("INSERT INTO lines (company_id, name, type, stroke, stroke_width) VALUES (?, ?, ?, ?, ?)",
-                               (c.id, l.name, l.type, l.stroke, l.stroke_width))
+                raw_geom_json = json.dumps(l.raw_geometry)
+                cursor.execute("INSERT INTO lines (company_id, name, type, stroke, stroke_width, raw_geometry, segments) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (c.id, l.name, l.type, l.stroke, l.stroke_width, raw_geom_json, None))
 
                 for s in l.stations:
                      # Serialize transfers list to JSON string
                      transfers_json = json.dumps(s.transferLst, ensure_ascii=False)
-                     cursor.execute("INSERT INTO stations (company_id, line_name, name, location_x, location_y, transfers) VALUES (?, ?, ?, ?, ?, ?)",
-                               (c.id, l.name, s.name, s.location.x, s.location.y, transfers_json))
+                     raw_geom_s_json = json.dumps(s.raw_geometry)
+                     cursor.execute("INSERT INTO stations (company_id, line_name, name, location_x, location_y, transfers, raw_geometry) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                               (c.id, l.name, s.name, s.location.x, s.location.y, transfers_json, raw_geom_s_json))
+
+        for sg in self.stationGroupList:
+            station_ids_json = json.dumps(sg.station_ids)
+            cursor.execute("INSERT INTO station_groups (id, name, location_x, location_y, station_ids) VALUES (?, ?, ?, ?, ?)",
+                           (str(sg.id), sg.name, sg.location[0], sg.location[1], station_ids_json))
 
         conn.commit()
         conn.close()
