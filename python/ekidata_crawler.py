@@ -110,7 +110,7 @@ class EkidataWorker(WorkerProcess):
         window = webview.create_window(
             'Auth Worker',
             self.LOGIN_URL,
-            hidden=False,
+            hidden=True,
             width=800, height=600
         )
         
