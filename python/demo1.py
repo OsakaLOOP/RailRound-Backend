@@ -290,6 +290,8 @@ class GeoJsonWorker(WorkerProcess):
 
         with open(self.config_file, 'r', encoding='utf-8') as f:
             companies = json.load(f)
+            if not isinstance(companies, dict):
+                companies = {}
 
         self.tracker.start(0, self.run_id)
 
@@ -297,7 +299,7 @@ class GeoJsonWorker(WorkerProcess):
         skipped_count = 0
 
         # 2. 遍历处理
-        for company_name in companies.keys():
+        for company_name in list(companies.keys()):
             filename = os.path.join(self.output_dir, f"{company_name}.geojson")
             
             if os.path.exists(filename):
@@ -452,9 +454,13 @@ class GeoJsonWorker(WorkerProcess):
         lat = lng = None
         for s, p, o in g.triples((None, self.GEO.lat, None)):
             try:
-                lat = float(o)
-                lng = float(g.value(s, self.GEO.long))
-                break
+                lat_val = o
+                lng_val = g.value(s, self.GEO.long)
+
+                if lat_val is not None and lng_val is not None:
+                    lat = float(lat_val)
+                    lng = float(lng_val)
+                    break
             except: continue
             
         if lat is not None and lng is not None:
@@ -488,7 +494,9 @@ class GeoJsonWorker(WorkerProcess):
         if "EMPTY" in wkt_str: return None, None
         
         if wkt_str.startswith("MULTILINESTRING"):
-            content = re.search(r'\((.*)\)', wkt_str).group(1)
+            match = re.search(r'\((.*)\)', wkt_str)
+            if not match: return None, None
+            content = match.group(1)
             parts = re.split(r'\),\s*\(', content)
             coords = []
             for p in parts:
@@ -497,7 +505,9 @@ class GeoJsonWorker(WorkerProcess):
                 coords.append(points)
             return "MultiLineString", coords
         elif wkt_str.startswith("LINESTRING"):
-            content = re.search(r'\((.*)\)', wkt_str).group(1)
+            match = re.search(r'\((.*)\)', wkt_str)
+            if not match: return None, None
+            content = match.group(1)
             points = [[float(v) for v in x.split()] for x in content.split(',') if x.strip()]
             return "LineString", points
         return None, None
