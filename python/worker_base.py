@@ -203,6 +203,7 @@ class WorkerProcess(ABC):
             "type": self.type,
             "status_code": self.status['statcode'], # 0, 1, 200, 500
             "status_text": self._get_status_text(self.status['statcode']),
+            "period": self.period, # Expose period
             "progress": prog_data,
             "last_update_ts": time.time(),
 
