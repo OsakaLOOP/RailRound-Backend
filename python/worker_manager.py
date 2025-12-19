@@ -10,10 +10,6 @@ from geojson_crawler import GeoJsonWorker
 from ekidata_crawler import EkidataWorker
 
 class WorkerRegistry:
-    """
-    Registry for Worker Classes.
-    Ensures unique names for worker types and provides dual-way lookup (Name <-> Class).
-    """
     _name_to_cls: Dict[str, Type[WorkerProcess]] = {}
     _cls_to_name: Dict[Type[WorkerProcess], str] = {}
     
@@ -43,29 +39,17 @@ class WorkerRegistry:
     def get_all_registered(cls):
         return cls._name_to_cls.copy()
 
-# Register known workers
-# You can add more here or call WorkerRegistry.register() from other modules
 WorkerRegistry.register("geojson", GeoJsonWorker)
 WorkerRegistry.register("ekidata", EkidataWorker)
 
 
 class WorkerManager:
-    """
-    Manages active worker instances.
-    """
     def __init__(self):
         self._workers: Dict[str, WorkerProcess] = {}
         self._lock = threading.Lock()
     
     def create_worker(self, type_name: str, instance_name: str, **kwargs) -> WorkerProcess:
-        """
-        Create a new worker instance.
         
-        Args:
-            type_name: The registered name of the worker class (e.g., 'geojson')
-            instance_name: Unique name for this instance
-            **kwargs: Arguments passed to the worker constructor
-        """
         with self._lock:
             if instance_name in self._workers:
                 raise ValueError(f"Worker instance with name '{instance_name}' already exists.")
@@ -88,10 +72,6 @@ class WorkerManager:
             return list(self._workers.values())
         
     def loop(self):
-        """
-        Main loop to monitor and trigger workers.
-        Run this in a separate thread.
-        """
         while True:
             now = time.time()
             workers_list = self.get_all_workers()
@@ -127,8 +107,6 @@ def loop(workers=None):
     if workers:
         print("Warning: Passing workers list to loop() is deprecated. Use WorkerManager.")
         for w in workers:
-            # Try to register instance if not already managed
-            # This is tricky because we need the class to be registered
             pass
             
     manager.loop()
