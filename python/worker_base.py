@@ -137,7 +137,7 @@ class WorkerProcess(ABC):
         '''配置独立 Logger'''
         # 1. 创建 Logger 对象 (使用唯一名称)
         logger = logging.getLogger(f"Worker.{self.name}")
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.INFO)
 
         # 2. 防止重复添加 Handler (关键：避免多重打印)
         if not logger.hasHandlers():
