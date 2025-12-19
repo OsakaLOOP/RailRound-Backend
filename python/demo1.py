@@ -5,12 +5,17 @@ import urllib.parse
 import logging
 import re
 import requests
+import uuid
 from abc import ABC, abstractmethod
 from rdflib import Graph, Namespace
 
 import threading
 import time
 from typing import Dict, Any
+
+class WorkerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return '[RunID:%s] %s' % (self.extra['worker'].run_id or 'None', msg), kwargs
 
 # 简单的进度查询器父类
 class ProgressTracker:
@@ -21,13 +26,15 @@ class ProgressTracker:
         self.start_time = 0
         self.error = None
         self._errors = []
+        self.run_id = None
 
-    def start(self, total: int):
+    def start(self, total: int, run_id: str = None):
         '''开始任务'''
         with self._lock:
             self.total = total
             self.current = 0
             self.start_time = time.time()
+            self.run_id = run_id
 
     def update(self, current: int):
         '''更新进度'''
@@ -90,6 +97,7 @@ class ProgressTracker:
                 "eta_seconds": eta,
                 "speed": speed,
                 "error": self.error,
+                "run_id": self.run_id,
                 # 如果 current < total 且 total > 0，认为 active
                 "is_active": (self.current < self.total) and (self.total > 0)
             }
@@ -100,6 +108,11 @@ class ProgressTracker:
             self.current += 1
             if item is not None:
                 self._item = item
+
+    def add_to_total(self, n: int):
+        '''增加总数'''
+        with self._lock:
+            self.total += n
 
     def recErr(self,err:str):
         with self._lock:
@@ -113,6 +126,7 @@ class WorkerProcess(ABC):
         self.type = type_str
         self.log_dir = 'logs'
         self.max_retry = max_retry
+        self.run_id = None
         
         self.logger = self._setup_logger()
         self.tracker = ProgressTracker()
@@ -135,52 +149,71 @@ class WorkerProcess(ABC):
         logger.setLevel(logging.INFO)
 
         # 2. 防止重复添加 Handler (关键：避免多重打印)
-        if logger.hasHandlers():
-            return logger
+        if not logger.hasHandlers():
+            # 3. 确保日志目录存在
+            if not os.path.exists(self.log_dir):
+                os.makedirs(self.log_dir)
 
-        # 3. 确保日志目录存在
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
+            # 4. 定义格式
+            formatter = logging.Formatter(
+                '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
 
-        # 4. 定义格式
-        formatter = logging.Formatter(
-            '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
+            # 5. Handler A: 文件输出 (logs/WorkerName.log)
+            file_handler = logging.FileHandler(
+                os.path.join(self.log_dir, f"{self.name}.log"),
+                encoding='utf-8'
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
 
-        # 5. Handler A: 文件输出 (logs/WorkerName.log)
-        file_handler = logging.FileHandler(
-            os.path.join(self.log_dir, f"{self.name}.log"), 
-            encoding='utf-8'
-        )
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+            # 6. Handler B: 控制台输出
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
 
-        # 6. Handler B: 控制台输出
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-
-        return logger
+        return WorkerAdapter(logger, {'worker': self})
     
     def _pre_run(self):
         '''运行前更新状态'''
         self.status['lastrun'] = time.time()
         self.status['statcode'] = 1
+        self.run_id = str(uuid.uuid4())[:8]
+        self.logger.info(f"Starting Run {self.run_id}")
     
     def _post_run(self, result, error=None):
         '''运行后更新状态'''
         current_time = time.time()
         self.status['uptime'] = current_time - self.status['starttime']
         
+        # Summary Log
+        summary = f"Run {self.run_id} Finished. Total Processed: {self.tracker.current}, Time Taken: {round(self.status['uptime'], 2)}s"
+
         if error:
             self.status['statcode'] = 500
             self.status['lastreturn'] = str(error)
             self.status['retry'] += 1
+            self.logger.error(f"{summary} (with errors)")
         else:
             self.status['statcode'] = 200
             self.status['lastreturn'] = result
-            self.status['nextrun'] = current_time + worker.period
+            self.status['nextrun'] = current_time + self.period
+            self.logger.info(summary)
+
+    def run(self):
+        '''统一运行入口'''
+        self._pre_run()
+
+        try:
+            result_msg = self.trigger()
+            self._post_run(result_msg)
+
+        except Exception as e:
+            # 统一的错误兜底
+            self.logger.exception("Critical Failure")
+            self.tracker.recErr(str(e))
+            self._post_run(None, error=e)
 
     def get_dashboard_view(self):
         """前端展示的状态"""
@@ -258,7 +291,7 @@ class GeoJsonWorker(WorkerProcess):
         with open(self.config_file, 'r', encoding='utf-8') as f:
             companies = json.load(f)
 
-        self.tracker.start(len(companies))
+        self.tracker.start(0, self.run_id)
 
         processed_count = 0
         skipped_count = 0
@@ -269,15 +302,11 @@ class GeoJsonWorker(WorkerProcess):
             
             if os.path.exists(filename):
                 skipped_count += 1
-                self.tracker.increment()
-                self.tracker.update(processed_count + skipped_count)
                 continue
             
             # 执行生成逻辑
             self._generate_for_company(company_name)
             processed_count += 1
-            self.tracker.increment()
-            self.tracker.update(processed_count + skipped_count)
             time.sleep(2) # 礼貌延迟
 
         result_msg = f"Completed. Processed: {processed_count}, Skipped: {skipped_count}"
@@ -294,6 +323,7 @@ class GeoJsonWorker(WorkerProcess):
         # 获取线路
         lines = self._get_company_lines(company_name)
         self.logger.info(f"Found {len(lines)} lines for {company_name}")
+        self.tracker.add_to_total(len(lines))
         
         for line_uri in lines:
             line_name = urllib.parse.unquote(line_uri.split('/')[-1])
@@ -308,7 +338,9 @@ class GeoJsonWorker(WorkerProcess):
 
             # 2. 处理车站
             g_line = self._fetch_graph(line_uri)
-            if not g_line: continue
+            if not g_line:
+                self.tracker.increment(line_name)
+                continue
             
             station_uris = [str(o) for s, p, o in g_line.triples((None, self.WDT.P527, None))]
             self.logger.debug(f"Found {len(station_uris)} stations for line {line_name}")
@@ -321,6 +353,8 @@ class GeoJsonWorker(WorkerProcess):
                         all_features.append(feat)
                         feature_map[st_uri] = feat
 
+            self.tracker.increment(line_name)
+
         # 保存文件
         self.logger.info(f"Saving {len(all_features)} features to {filename}")
         with open(filename, 'w', encoding='utf-8') as f:
@@ -329,10 +363,28 @@ class GeoJsonWorker(WorkerProcess):
     def _fetch_graph(self, url):
         safe_url = self._get_encoded_uri(url)
         self.logger.debug(f"Fetching graph: {safe_url}")
+
         try:
             resp = self.session.get(safe_url, timeout=10)
             resp.raise_for_status()
+        except (requests.exceptions.ProxyError, requests.exceptions.SSLError) as e:
+            if self.session.trust_env:
+                self.logger.warning(f"Proxy/SSL Error with {url}: {e}. Disabling system proxy and retrying...")
+                self.session.trust_env = False
+                try:
+                    resp = self.session.get(safe_url, timeout=10)
+                    resp.raise_for_status()
+                except Exception as e2:
+                    self.logger.warning(f"Failed to fetch graph {url} (direct): {e2}")
+                    return None
+            else:
+                self.logger.warning(f"Failed to fetch graph {url}: {e}")
+                return None
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch graph {url}: {e}")
+            return None
             
+        try:
             # 清洗非法字符
             raw_text = resp.text
             def encode_match(match):
@@ -343,7 +395,7 @@ class GeoJsonWorker(WorkerProcess):
             g.parse(data=clean_text, format="turtle", publicID=safe_url)
             return g
         except Exception as e:
-            self.logger.warning(f"Failed to fetch graph {url}: {e}")
+            self.logger.warning(f"Failed to parse graph {url}: {e}")
             return None
 
     def _get_company_lines(self, company_name):
