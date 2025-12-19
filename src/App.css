@@ -1,42 +1,254 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+:root {
+  --bg-dark: #333;
+  --bg-darker: #222;
+  --bg-slate: #1e293b;
+  --bg-slate-dark: #0f172a;
+  --text-white: #ffffff;
+  --text-gray: #9ca3af;
+  --text-gray-light: #cbd5e1;
+  --border-color: #444;
+  --primary-blue: #3b82f6;
+  --primary-green: #22c55e;
+  --danger-red: #ef4444;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* App Layout */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  padding-top: 48px; /* For TitleBar */
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.tab-bar {
+  display: flex;
+  background-color: var(--bg-darker);
+  border-bottom: 1px solid var(--border-color);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.tab-button {
+  padding: 12px 24px;
+  font-weight: 500;
+  transition: background-color 0.2s, color 0.2s;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-gray);
 }
 
-.card {
-  padding: 2em;
+.tab-button:hover {
+  color: var(--text-white);
+  background-color: #2a2a2a;
 }
 
-.read-the-docs {
-  color: #888;
+.tab-button.active {
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  border-top: 2px solid var(--primary-blue);
+}
+
+.content-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.tab-content {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.tab-content.no-scroll {
+  overflow: hidden;
+}
+
+/* Worker Scheduler */
+.scheduler-container {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.scheduler-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.scheduler-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 0;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  border: none;
+  cursor: pointer;
+  color: white;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background-color: var(--primary-blue);
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+}
+
+.btn-success {
+  background-color: var(--primary-green);
+}
+
+.btn-success:hover {
+  background-color: #16a34a;
+}
+
+.btn-danger {
+  background-color: #7f1d1d;
+  border: 1px solid #b91c1c;
+}
+
+.btn-danger:hover {
+  background-color: #991b1b;
+}
+
+.btn:disabled {
+  background-color: #4b5563;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.workers-table-container {
+  flex: 1;
+  overflow: auto;
+  background-color: var(--bg-slate);
+  border-radius: 8px;
+  border: 1px solid #374151;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.workers-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.workers-table th {
+  background-color: #111827;
+  color: #9ca3af;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  padding: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid #374151;
+}
+
+.workers-table td {
+  padding: 16px;
+  border-bottom: 1px solid #374151;
+  color: #e5e7eb;
+}
+
+.workers-table tr:hover {
+  background-color: #1f2937;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-running { background-color: #dbeafe; color: #1e40af; }
+.status-done { background-color: #dcfce7; color: #166534; }
+.status-error { background-color: #fee2e2; color: #991b1b; }
+.status-idle { background-color: #f3f4f6; color: #1f2937; }
+
+.progress-bar-bg {
+  width: 100%;
+  background-color: #374151;
+  border-radius: 9999px;
+  height: 10px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--primary-blue);
+  transition: width 0.5s ease;
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.log-preview {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.input-period {
+  background-color: #111827;
+  border: 1px solid #4b5563;
+  color: white;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  width: 80px;
+  padding: 4px 8px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--primary-green);
+  padding: 4px;
+}
+
+.btn-icon:hover {
+  color: #4ade80;
+}
+
+/* Console Panel - Minimal replacements for what was inline/tailwind mixed */
+.text-gray-400 { color: #9ca3af; }
+.text-green-600 { color: #16a34a; }
+.text-red-500 { color: #ef4444; }
+.text-gray-600 { color: #4b5563; }
+.bg-green-500 { background-color: #22c55e; }
+.bg-yellow-400 { background-color: #facc15; }
+.bg-red-500 { background-color: #ef4444; }
+.bg-gray-300 { background-color: #d1d5db; }
+.animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
 }
