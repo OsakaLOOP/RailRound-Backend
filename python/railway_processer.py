@@ -261,8 +261,8 @@ class line:
         self.company = company
         self.type = data["type"]
         self.id = None
-        # Extract only coordinates to meet requirement: "strip the 'type', only leave the list inside 'coordinates'"
-        self.raw_geometry = data['geometry'].get('coordinates')
+        # data['geometry'] is already the coordinates list passed from process_line_feature
+        self.raw_geometry = data['geometry']
         self.odptUri = data['uri']
         self.stations = []
 
