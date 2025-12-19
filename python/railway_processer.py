@@ -145,31 +145,56 @@ class company:
         path = os.path.join(geojson_dir, f"{self.id}.geojson")
 
         self.stations_feature_buffer = []
-        # 第一次循环
-        for i in self.rawFeatures:
+
+        # Helper to process line features
+        def process_line_feature(i):
             geometry = i.get("geometry", {})
             properties = i.get("properties", {})
-            pro_type = properties.get("type", {})
             geo_type = geometry.get('type')
             geo_coords = geometry.get('coordinates', [])
             
-            if i['type'] == 'Feature' and geometry and properties:
+            try:
+                if not(geo_type in ['LineString','MultiLineString'] and geo_coords):
+                    raise ValueError(f"Invalid geometry type or empty coordinates: {geo_type if geo_type else 'None'}, {geo_coords if geo_coords else 'None'}")
+
+                # Extract visual properties
+                data = {
+                    'name': properties.get('name'),
+                    'uri': properties.get('uri'),
+                    'geometry': geo_coords,
+                    'type': properties.get('type'),
+                    'stroke': properties.get('stroke'),
+                    'stroke-width': properties.get('stroke-width')
+                }
+                lineInstance = line(data, self)
+                self.lineList.append(lineInstance)
+                self.line_registry[properties.get('name','')] = []
+
+            except Exception as e:
+                logger.error(f"Error processing line feature in GeoJSON file: {path} - {e}")
+
+        # First pass: Regular lines
+        for i in self.rawFeatures:
+            properties = i.get("properties", {})
+            pro_type = properties.get("type")
+
+            if i['type'] == 'Feature':
                 if pro_type == 'line':
-                    try:
-                        if not(geo_type in ['LineString','MultiLineString'] and geo_coords):
-                            raise ValueError(f"Invalid geometry type or empty coordinates: {geo_type if geo_type else 'None'}, {geo_coords if geo_coords else 'None'}")
-                        
-                        data = {'name':properties.get('name'),'uri':properties.get('uri'),'geometry':geo_coords,'type':properties.get('type')}
-                        lineInstance=line(data, self)
-                        self.lineList.append(lineInstance)
-                        self.line_registry[properties.get('name','')] = []
-                        
-                    except Exception as e:
-                        logger.error(f"Error processing line feature in GeoJSON file: {path} - {e}")
+                    process_line_feature(i)
+                elif pro_type in ['cableline', 'disneyline']:
+                    pass # Skip for second pass
                 else:
                     self.stations_feature_buffer.append(i)
             else:
-                logger.error(f"Error processing feature in GeoJSON file: {path} - Invalid feature format: {i[:30]}{'...' if len(i)>30 else ''}")
+                 logger.error(f"Error processing feature in GeoJSON file: {path} - Invalid feature format")
+
+        # Second pass: Special lines (cableline, disneyline)
+        for i in self.rawFeatures:
+             properties = i.get("properties", {})
+             pro_type = properties.get("type")
+             if i['type'] == 'Feature' and pro_type in ['cableline', 'disneyline']:
+                 process_line_feature(i)
+
         
         # 建立与ekidata csv的联系
         if self.service and self.service.company_ekidata:
@@ -188,7 +213,7 @@ class company:
                 try:
                     if not(geo_type == 'Point' and geo_coords):
                         raise ValueError(f"Invalid geometry type or empty coordinate: {geo_type if geo_type else 'None'}, {geo_coords if geo_coords else 'None'}")
-                    stationdata = {'location': geo_coords, 'name': properties['name'], 'transferLst': properties['transfers']}
+                    stationdata = {'location': geo_coords, 'name': properties.get('name'), 'transferLst': properties.get('transfers', [])}
                     stationInstance = station(stationdata, self)
                     self.stationList.append(stationInstance)
                     
@@ -200,7 +225,7 @@ class company:
                 except Exception as e:
                     logger.error(f"Error processing station feature in GeoJSON file: {path} - {e}")
             else:
-                logger.warning(f"Unknown feature type in GeoJSON file: {path} - {properties}")
+                pass # Already handled or unknown
             
         for i in self.lineList:
             i.load_stations()
@@ -239,6 +264,10 @@ class line:
         self.rawGeometry = data['geometry']
         self.odptUri = data['uri']
         self.stations = []
+
+        # Visual properties
+        self.stroke = data.get('stroke')
+        self.stroke_width = data.get('stroke-width')
     
     def load_stations(self):
         for i in self.company.line_registry[self.name]:
@@ -322,7 +351,7 @@ class RailwayDataService:
 
         company_json_path = os.path.join(self.data_dir, "company_data.json")
 
-        # In a real scenario, these should be dynamically found or passed in
+        # NOTE: For now hardcoding the names relative to ekidata_dir as they were in the original script
         ekidata_company_path = os.path.join(self.ekidata_dir, "company20251015.csv")
         ekidata_company_patch_path = os.path.join(self.ekidata_dir, "companypatch.csv")
         ekidata_line_path = os.path.join(self.ekidata_dir, "line20250604free.csv")
@@ -380,6 +409,8 @@ class RailwayDataService:
                 company_id TEXT,
                 name TEXT,
                 type TEXT,
+                stroke TEXT,
+                stroke_width REAL,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
             )
         ''')
@@ -391,6 +422,7 @@ class RailwayDataService:
                 name TEXT,
                 location_x REAL,
                 location_y REAL,
+                transfers TEXT,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
             )
         ''')
@@ -406,12 +438,14 @@ class RailwayDataService:
                            (c.id, c.region, c.type, c.cd, c.rr))
 
             for l in c.lineList:
-                cursor.execute("INSERT INTO lines (company_id, name, type) VALUES (?, ?, ?)",
-                               (c.id, l.name, l.type))
+                cursor.execute("INSERT INTO lines (company_id, name, type, stroke, stroke_width) VALUES (?, ?, ?, ?, ?)",
+                               (c.id, l.name, l.type, l.stroke, l.stroke_width))
 
                 for s in l.stations:
-                     cursor.execute("INSERT INTO stations (company_id, line_name, name, location_x, location_y) VALUES (?, ?, ?, ?, ?)",
-                               (c.id, l.name, s.name, s.location.x, s.location.y))
+                     # Serialize transfers list to JSON string
+                     transfers_json = json.dumps(s.transferLst, ensure_ascii=False)
+                     cursor.execute("INSERT INTO stations (company_id, line_name, name, location_x, location_y, transfers) VALUES (?, ?, ?, ?, ?, ?)",
+                               (c.id, l.name, s.name, s.location.x, s.location.y, transfers_json))
 
         conn.commit()
         conn.close()
