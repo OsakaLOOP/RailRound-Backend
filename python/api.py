@@ -64,16 +64,18 @@ class Api:
         curr_time = time.time()
 
         dt = curr_time - self._last_time
-        
-        disk_r = (curr_disk.read_bytes - self._last_disk.read_bytes) / 1024 / 1024 / dt
-        disk_w = (curr_disk.write_bytes - self._last_disk.write_bytes) / 1024 / 1024 / dt
-        
-        net_d = (curr_net.bytes_recv - self._last_net.bytes_recv) / 1024 / dt
-        net_u = (curr_net.bytes_sent - self._last_net.bytes_sent) / 1024 / dt
-        
-        self._last_net = curr_net
-        self._last_disk = curr_disk
-        self._last_time = curr_time
+        try:
+            disk_r = (curr_disk.read_bytes - self._last_disk.read_bytes) / 1024 / 1024 / dt
+            disk_w = (curr_disk.write_bytes - self._last_disk.write_bytes) / 1024 / 1024 / dt
+            
+            net_d = (curr_net.bytes_recv - self._last_net.bytes_recv) / 1024 / dt
+            net_u = (curr_net.bytes_sent - self._last_net.bytes_sent) / 1024 / dt
+            
+            self._last_net = curr_net
+            self._last_disk = curr_disk
+            self._last_time = curr_time
 
-        return [int(psutil.cpu_percent(interval=1)), int(psutil.virtual_memory().percent), int(disk_r), int(disk_w), int(net_d), int(net_u)]
+            return [int(psutil.cpu_percent(interval=1)), int(psutil.virtual_memory().percent), int(disk_r), int(disk_w), int(net_d), int(net_u)]
+        except:
+            return[0,0,0,0,0,0]
         # 顺序: CPU, RAM, DISK, NET

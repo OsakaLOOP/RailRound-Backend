@@ -62,7 +62,7 @@ class EkidataWorker(WorkerProcess):
 
             # 文件名提取逻辑
             try:
-                # 假设 url 结构: f.php?d=20250122&...
+                # 假设 url 结构: f.php?t=1&d=20250122...
                 date_part = str(href).split('d=')[1].split('&')[0]
                 filename = f"ekidata_{date_part}.csv"
             except IndexError:
@@ -90,12 +90,15 @@ class EkidataWorker(WorkerProcess):
         window = webview.create_window(
             'Auth Worker',
             self.LOGIN_URL,
-            hidden=self.DEBUG_MODE, # 调试模式下隐藏，非调试模式显示
+            hidden=False,
             width=800, height=600
         )
+        
 
         # 定义认证逻辑 (注入 JS)
         def auth_logic():
+            if not window:
+                return
             time.sleep(3) # 等待DOM加载
             
             self.logger.info("注入登录脚本...")
@@ -117,15 +120,8 @@ class EkidataWorker(WorkerProcess):
             window.destroy()
 
         # 在当前线程执行认证逻辑，等待窗口操作完成
-        # 注意：这里假设 webview 循环在主线程运行，而我们在工作线程
-        # window.evaluate_js 可能需要 GUI 循环的支持，如果 webview.start() 没跑，这会卡住或无效。
-        # 假设 test.py 已经在跑 webview.start()。
-
-        # 由于 evaluate_js 和 get_cookies 可能需要在 UI 线程执行，pywebview 的多线程支持有限。
-        # 但通常 create_window 返回的 window 对象的方法是线程安全的或者是被代理的。
-
-        # 我们稍微等待一下窗口创建
-        time.sleep(1)
+        # 等待一下窗口创建
+        time.sleep(0.3)
 
         try:
             auth_logic()
@@ -138,19 +134,13 @@ class EkidataWorker(WorkerProcess):
         cookie_dict = {}
         for c in cookies:
             try:
-                # 情况A: 处理日志中出现的 SimpleCookie 类型
+                # 处理 SimpleCookie 类型
                 if isinstance(c, http.cookies.BaseCookie):
                     # SimpleCookie 像字典一样存储 Morsel 对象
                     for key, morsel in c.items():
                         cookie_dict[key] = morsel.value
                 else:
-                    # 尝试直接读取 key/value 属性
-                    if hasattr(c, 'name') and hasattr(c, 'value'):
-                        cookie_dict[c.name] = c.value
-                    elif hasattr(c, 'key') and hasattr(c, 'value'):
-                         cookie_dict[c.key] = c.value
-                    else:
-                        self.logger.warning(f"未知 Cookie 类型: {type(c)}")
+                    raise ValueError(f"未知 Cookie 类型: {type(c)}")
                     
             except Exception as e:
                 self.logger.warning(f"无法解析单个Cookie: {c} - {e}")
@@ -161,7 +151,7 @@ class EkidataWorker(WorkerProcess):
         try:
             with self.session.get(url, stream=True) as r:
                 r.raise_for_status()
-                # 检查是否是 CSV 类型 (防止下载到报错 HTML)
+                # 检查是否是 CSV 类型 (防止下载到 HTML)
                 if 'text/html' in r.headers.get('Content-Type', ''):
                     self.logger.warning(f"下载内容疑似为HTML而非文件: {url}")
                     return
