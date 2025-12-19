@@ -161,6 +161,69 @@ class GeometryCleaner:
                         current_path = seg[::-1][:-1] + current_path
                     changed = True
 
+                # If no strict match found, look for nearest neighbor within looser tolerance (Gap Bridging)
+                elif not changed and pool:
+                    gap_tol = 0.05 # ~5km gap tolerance
+                    nearest_idx = -1
+                    min_dist = float('inf')
+                    gap_match_type = None
+
+                    for i, seg in enumerate(pool):
+                        if len(seg) < 1: continue
+                        s_start = seg[0]
+                        s_end = seg[-1]
+
+                        # dist to end_pt
+                        d_end_start = self.distance(end_pt, s_start)
+                        d_end_end = self.distance(end_pt, s_end)
+                        # dist to start_pt
+                        d_start_end = self.distance(start_pt, s_end)
+                        d_start_start = self.distance(start_pt, s_start)
+
+                        if d_end_start < min_dist:
+                            min_dist = d_end_start
+                            nearest_idx = i
+                            gap_match_type = 'end-start'
+                        if d_end_end < min_dist:
+                            min_dist = d_end_end
+                            nearest_idx = i
+                            gap_match_type = 'end-end'
+                        if d_start_end < min_dist:
+                            min_dist = d_start_end
+                            nearest_idx = i
+                            gap_match_type = 'start-end'
+                        if d_start_start < min_dist:
+                            min_dist = d_start_start
+                            nearest_idx = i
+                            gap_match_type = 'start-start'
+
+                    if nearest_idx != -1 and min_dist < gap_tol:
+                        print(f"  Bridging gap of {min_dist:.4f} units ({gap_match_type})")
+                        seg = pool.pop(nearest_idx)
+
+                        if gap_match_type == 'end-start':
+                            # Bridge from end_pt to s_start
+                            current_path.extend(seg) # Include start point implies a jump, or we add interpolated points?
+                            # Since this is a "bridge", we just connect them.
+                            # If we want a clean line string, we just append the points.
+                            # The gap is implicitly a straight line segment between end_pt and seg[0].
+                        elif gap_match_type == 'end-end':
+                            current_path.extend(seg[::-1])
+                        elif gap_match_type == 'start-end':
+                            current_path = seg + current_path
+                        elif gap_match_type == 'start-start':
+                            current_path = seg[::-1] + current_path
+                        changed = True
+
+            # Loop Closure Check for single path
+            if len(current_path) > 2:
+                d_loop = self.distance(current_path[0], current_path[-1])
+                is_loop = d_loop < 0.08
+                if is_loop:
+                     print(f"  Detected loop gap of {d_loop:.4f} units")
+                     # User instruction: "given a cut to make it linear".
+                     # We do NOT append the closing point, leaving it as an open 'cut' line.
+
             paths.append(current_path)
 
         return paths
