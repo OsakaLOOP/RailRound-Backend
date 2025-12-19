@@ -28,7 +28,7 @@ class ProgressTracker:
         self._errors = []
         self.run_id = None
 
-    def start(self, total: int, run_id: str = None):
+    def start(self, total: int, run_id: str = ''):
         '''开始任务'''
         with self._lock:
             self.total = total
@@ -200,20 +200,6 @@ class WorkerProcess(ABC):
             self.status['lastreturn'] = result
             self.status['nextrun'] = current_time + self.period
             self.logger.info(summary)
-
-    def run(self):
-        '''统一运行入口'''
-        self._pre_run()
-
-        try:
-            result_msg = self.trigger()
-            self._post_run(result_msg)
-
-        except Exception as e:
-            # 统一的错误兜底
-            self.logger.exception("Critical Failure")
-            self.tracker.recErr(str(e))
-            self._post_run(None, error=e)
 
     def get_dashboard_view(self):
         """前端展示的状态"""
