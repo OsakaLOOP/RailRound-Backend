@@ -7,7 +7,7 @@ const TitleBar = () => {
   // Initialize menuRef
   const menuRef = useRef(null);
 
-  // 调用后端 API 的通用函数
+  // General function to call backend API
   const callWindowOp = (method) => {
     if (window.pywebview && window.pywebview.api) {
       window.pywebview.api[method]().catch(() => {});
