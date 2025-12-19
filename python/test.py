@@ -10,6 +10,7 @@ from flask import Flask, render_template, request
 
 #from railway_processer import router as api_router # 引入api路由蓝图
 from api import Api
+from worker_manager import manager, WorkerRegistry
 
 index=r".\..\dist\index.html"
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +121,17 @@ def run(window):
 #程序启动
 if __name__ == '__main__':
 
+    # Initialize workers
+    if not manager.get_worker('geojson'):
+        manager.create_worker('geojson', 'GeojsonWorker', period=3600)
+
+    if not manager.get_worker('ekidata'):
+        manager.create_worker('ekidata', 'EkidataWorker', period=3600)
+
+    # Start manager loop
+    t_manager = threading.Thread(target=manager.loop)
+    t_manager.daemon = True
+    t_manager.start()
 
     api_instance = Api()
     t = threading.Thread(target=start)

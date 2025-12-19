@@ -2,6 +2,7 @@ import logging
 import json
 import psutil
 import time
+from worker_manager import manager
 
 frontend_logger = logging.getLogger("Frontend")
 
@@ -79,3 +80,34 @@ class Api:
         except:
             return[0,0,0,0,0,0]
         # 顺序: CPU, RAM, DISK, NET
+
+    def get_workers_status(self):
+        return [w.get_dashboard_view() for w in manager.get_all_workers()]
+
+    def start_worker(self, name):
+        worker = manager.get_worker(name)
+        if worker:
+            worker.status['nextrun'] = 0
+            worker.status['statcode'] = 0
+            return True
+        return False
+
+    def start_full_cycle(self):
+        manager.start_full_cycle()
+        return True
+
+    def stop_full_cycle(self):
+        manager.cycle_active = False
+        return True
+
+    def update_worker_period(self, name, period):
+        worker = manager.get_worker(name)
+        if worker:
+            try:
+                p = int(period)
+                if p > 0:
+                    worker.period = p
+                    return True
+            except:
+                pass
+        return False
