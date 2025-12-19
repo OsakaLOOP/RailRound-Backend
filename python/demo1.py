@@ -5,12 +5,17 @@ import urllib.parse
 import logging
 import re
 import requests
+import uuid
 from abc import ABC, abstractmethod
 from rdflib import Graph, Namespace
 
 import threading
 import time
 from typing import Dict, Any
+
+class WorkerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return '[RunID:%s] %s' % (self.extra['worker'].run_id or 'None', msg), kwargs
 
 # 简单的进度查询器父类
 class ProgressTracker:
@@ -21,13 +26,15 @@ class ProgressTracker:
         self.start_time = 0
         self.error = None
         self._errors = []
+        self.run_id = None
 
-    def start(self, total: int):
+    def start(self, total: int, run_id: str = None):
         '''开始任务'''
         with self._lock:
             self.total = total
             self.current = 0
             self.start_time = time.time()
+            self.run_id = run_id
 
     def update(self, current: int):
         '''更新进度'''
@@ -90,6 +97,7 @@ class ProgressTracker:
                 "eta_seconds": eta,
                 "speed": speed,
                 "error": self.error,
+                "run_id": self.run_id,
                 # 如果 current < total 且 total > 0，认为 active
                 "is_active": (self.current < self.total) and (self.total > 0)
             }
@@ -118,6 +126,7 @@ class WorkerProcess(ABC):
         self.type = type_str
         self.log_dir = 'logs'
         self.max_retry = max_retry
+        self.run_id = None
         
         self.logger = self._setup_logger()
         self.tracker = ProgressTracker()
@@ -140,52 +149,71 @@ class WorkerProcess(ABC):
         logger.setLevel(logging.INFO)
 
         # 2. 防止重复添加 Handler (关键：避免多重打印)
-        if logger.hasHandlers():
-            return logger
+        if not logger.hasHandlers():
+            # 3. 确保日志目录存在
+            if not os.path.exists(self.log_dir):
+                os.makedirs(self.log_dir)
 
-        # 3. 确保日志目录存在
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
+            # 4. 定义格式
+            formatter = logging.Formatter(
+                '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
 
-        # 4. 定义格式
-        formatter = logging.Formatter(
-            '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
+            # 5. Handler A: 文件输出 (logs/WorkerName.log)
+            file_handler = logging.FileHandler(
+                os.path.join(self.log_dir, f"{self.name}.log"),
+                encoding='utf-8'
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
 
-        # 5. Handler A: 文件输出 (logs/WorkerName.log)
-        file_handler = logging.FileHandler(
-            os.path.join(self.log_dir, f"{self.name}.log"), 
-            encoding='utf-8'
-        )
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+            # 6. Handler B: 控制台输出
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
 
-        # 6. Handler B: 控制台输出
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-
-        return logger
+        return WorkerAdapter(logger, {'worker': self})
     
     def _pre_run(self):
         '''运行前更新状态'''
         self.status['lastrun'] = time.time()
         self.status['statcode'] = 1
+        self.run_id = str(uuid.uuid4())[:8]
+        self.logger.info(f"Starting Run {self.run_id}")
     
     def _post_run(self, result, error=None):
         '''运行后更新状态'''
         current_time = time.time()
         self.status['uptime'] = current_time - self.status['starttime']
         
+        # Summary Log
+        summary = f"Run {self.run_id} Finished. Total Processed: {self.tracker.current}, Time Taken: {round(self.status['uptime'], 2)}s"
+
         if error:
             self.status['statcode'] = 500
             self.status['lastreturn'] = str(error)
             self.status['retry'] += 1
+            self.logger.error(f"{summary} (with errors)")
         else:
             self.status['statcode'] = 200
             self.status['lastreturn'] = result
-            self.status['nextrun'] = current_time + worker.period
+            self.status['nextrun'] = current_time + self.period
+            self.logger.info(summary)
+
+    def run(self):
+        '''统一运行入口'''
+        self._pre_run()
+
+        try:
+            result_msg = self.trigger()
+            self._post_run(result_msg)
+
+        except Exception as e:
+            # 统一的错误兜底
+            self.logger.exception("Critical Failure")
+            self.tracker.recErr(str(e))
+            self._post_run(None, error=e)
 
     def get_dashboard_view(self):
         """前端展示的状态"""
@@ -263,7 +291,7 @@ class GeoJsonWorker(WorkerProcess):
         with open(self.config_file, 'r', encoding='utf-8') as f:
             companies = json.load(f)
 
-        self.tracker.start(0)
+        self.tracker.start(0, self.run_id)
 
         processed_count = 0
         skipped_count = 0
