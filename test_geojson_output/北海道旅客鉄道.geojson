@@ -26493,8 +26493,8 @@
         "type": "station",
         "uri": "https://uedayou.net/jrslod/%E5%8C%97%E6%B5%B7%E9%81%93%E6%97%85%E5%AE%A2%E9%89%84%E9%81%93/%E5%87%BD%E9%A4%A8%E6%9C%AC%E7%B7%9A/%E6%9C%AD%E5%B9%8C",
         "transfers": [
-          "南北線",
-          "東豊線"
+          "東豊線",
+          "南北線"
         ]
       },
       "geometry": {
@@ -26946,8 +26946,8 @@
         "type": "station",
         "uri": "https://uedayou.net/jrslod/%E5%8C%97%E6%B5%B7%E9%81%93%E6%97%85%E5%AE%A2%E9%89%84%E9%81%93/%E5%87%BD%E9%A4%A8%E6%9C%AC%E7%B7%9A/%E6%97%AD%E5%B7%9D",
         "transfers": [
-          "富良野線",
-          "宗谷本線"
+          "宗谷本線",
+          "富良野線"
         ]
       },
       "geometry": {
@@ -61517,8 +61517,8 @@
         "type": "station",
         "uri": "https://uedayou.net/jrslod/%E5%8C%97%E6%B5%B7%E9%81%93%E6%97%85%E5%AE%A2%E9%89%84%E9%81%93/%E5%AF%8C%E8%89%AF%E9%87%8E%E7%B7%9A/%E6%97%AD%E5%B7%9D",
         "transfers": [
-          "函館本線",
-          "宗谷本線"
+          "宗谷本線",
+          "函館本線"
         ]
       },
       "geometry": {
@@ -61526,23 +61526,6 @@
         "coordinates": [
           142.3588,
           43.76203
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "properties": {
-        "name": "神楽岡",
-        "line": "富良野線",
-        "type": "station",
-        "uri": "https://uedayou.net/jrslod/%E5%8C%97%E6%B5%B7%E9%81%93%E6%97%85%E5%AE%A2%E9%89%84%E9%81%93/%E5%AF%8C%E8%89%AF%E9%87%8E%E7%B7%9A/%E7%A5%9E%E6%A5%BD%E5%B2%A1",
-        "transfers": []
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          142.3582,
-          43.74504
         ]
       }
     },
@@ -85353,8 +85336,8 @@
         "type": "station",
         "uri": "https://uedayou.net/jrslod/%E5%8C%97%E6%B5%B7%E9%81%93%E6%97%85%E5%AE%A2%E9%89%84%E9%81%93/%E6%B5%B7%E5%B3%A1%E7%B7%9A/%E6%9C%A8%E5%8F%A4%E5%86%85",
         "transfers": [
-          "北海道新幹線",
-          "道南いさりび鉄道線"
+          "道南いさりび鉄道線",
+          "北海道新幹線"
         ]
       },
       "geometry": {

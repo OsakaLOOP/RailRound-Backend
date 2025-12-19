@@ -15,7 +15,7 @@ from typing import Dict, Any
 
 class WorkerAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
-        return '[RunID:%s] %s' % (self.extra['worker'].run_id or 'None', msg), kwargs
+        return '[RunID:%s] %s' % (self.extra['worker'].run_id or 'None', msg), kwargs # type: ignore
 
 # 简单的进度查询器父类
 class ProgressTracker:
@@ -24,9 +24,9 @@ class ProgressTracker:
         self.total = 0
         self.current = 0
         self.start_time = 0
-        self.error = None
+        self.error = 0
         self._errors = []
-        self.run_id = None
+        self.run_id = ''
 
     def start(self, total: int, run_id: str = ''):
         '''开始任务'''
@@ -126,7 +126,7 @@ class WorkerProcess(ABC):
         self.type = type_str
         self.log_dir = 'logs'
         self.max_retry = max_retry
-        self.run_id = None
+        self.run_id = ''
         
         self.logger = self._setup_logger()
         self.tracker = ProgressTracker()
@@ -146,7 +146,7 @@ class WorkerProcess(ABC):
         '''配置独立 Logger'''
         # 1. 创建 Logger 对象 (使用唯一名称)
         logger = logging.getLogger(f"Worker.{self.name}")
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)
 
         # 2. 防止重复添加 Handler (关键：避免多重打印)
         if not logger.hasHandlers():
@@ -295,6 +295,8 @@ class GeoJsonWorker(WorkerProcess):
             # 执行生成逻辑
             self._generate_for_company(company_name)
             processed_count += 1
+            if processed_count==len(companies.keys()):
+                pass
             time.sleep(2) # 礼貌延迟
 
         result_msg = f"Completed. Processed: {processed_count}, Skipped: {skipped_count}"
