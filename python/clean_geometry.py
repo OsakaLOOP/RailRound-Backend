@@ -66,125 +66,122 @@ class GeometryCleaner:
             paths.append(current_path)
         return paths
 
-    def merge_components(self, paths, max_gap=0.03):
-        while True:
-            best_score = -float('inf')
-            best_pair = None
-            n = len(paths)
-            if n < 2: break
+    def extend_seeds(self, paths, max_gap=0.03, min_alignment=0.0):
+        print(f"Starting extend_seeds with {len(paths)} paths. Max gap: {max_gap}, Min align: {min_alignment}")
 
-            vectors = []
-            for p in paths:
-                if len(p) < 2: vectors.append(([0,0], [0,0])); continue
-                v_start_out = self.get_vector(p[1], p[0])
-                v_end_out = self.get_vector(p[-2], p[-1])
-                vectors.append((v_start_out, v_end_out))
-
-            candidates = []
-            for i in range(n):
-                for j in range(i + 1, n):
-                    p1 = paths[i]
-                    p2 = paths[j]
-
-                    # Check 4 combinations
-                    pairs = [
-                        (p1[-1], p2[0], vectors[i][1], self.get_vector(p2[0], p2[1]), 'end-start'),
-                        (p1[-1], p2[-1], vectors[i][1], self.get_vector(p2[-1], p2[-2]), 'end-end'),
-                        (p2[-1], p1[0], vectors[j][1], self.get_vector(p1[0], p1[1]), 'start-end'),
-                        (p1[0], p2[0], vectors[i][0], self.get_vector(p2[0], p2[1]), 'start-start')
-                    ]
-
-                    for pt1, pt2, v_out, v_in, mtype in pairs:
-                        d = self.distance(pt1, pt2)
-                        if d < max_gap:
-                            if d < 1e-4:
-                                score = 1000.0
-                            else:
-                                v_bridge = self.get_vector(pt1, pt2)
-                                a1 = self.calculate_angle_score(v_out, v_bridge)
-                                a2 = self.calculate_angle_score(v_bridge, v_in)
-                                avg_angle = (a1 + a2) / 2
-                                if avg_angle < -0.5: score = -1000.0
-                                else: score = avg_angle - (d * 100)
-                            candidates.append((score, i, j, mtype, d))
-
-            if not candidates: break
-            candidates.sort(key=lambda x: x[0], reverse=True)
-            best = candidates[0]
-            if best[0] <= -500: break
-
-            score, i, j, mtype, dist = best
-            print(f"  Merging paths {i} and {j} (score {score:.2f}, dist {dist:.4f}, {mtype})")
-
-            path_i = paths[i]
-            path_j = paths[j]
-            new_path = []
-            if mtype == 'end-start': new_path = path_i + path_j
-            elif mtype == 'end-end': new_path = path_i + path_j[::-1]
-            elif mtype == 'start-end': new_path = path_j + path_i
-            elif mtype == 'start-start': new_path = path_i[::-1] + path_j
-
-            next_paths = [new_path]
-            for k in range(n):
-                if k != i and k != j: next_paths.append(paths[k])
-            paths = next_paths
-        return paths
-
-    def manual_seam(self, line_name, sequences, raw_geom):
-        """
-        Manually construct paths from raw segment sequences.
-        sequences: list of lists of indices e.g. [[0, 1], [2, 3]]
-        """
-        final_segments = []
-        for seq_idx, indices in enumerate(sequences):
-            path = []
-            for i, raw_idx in enumerate(indices):
-                seg = raw_geom[raw_idx]
-                if not seg: continue
-                if not path:
-                    path = list(seg)
-                else:
-                    # Append based on proximity
-                    start_pt = path[0]
-                    end_pt = path[-1]
-                    s_start = seg[0]
-                    s_end = seg[-1]
-
-                    d_end_start = self.distance(end_pt, s_start)
-                    d_end_end = self.distance(end_pt, s_end)
-                    d_start_end = self.distance(start_pt, s_end)
-                    d_start_start = self.distance(start_pt, s_start)
-
-                    # Pick best connection
-                    # We assume the user gave a linear sequence, but we might need to flip segments.
-                    # Or attach to front?
-                    # Let's assume the user intends an ordered sequence: A -> B -> C
-                    # So we primarily check appending to end.
-                    if d_end_start <= d_end_end:
-                        # Append forward
-                        if d_end_start > 0.05: print(f"Warning: Large gap {d_end_start} in manual sequence {seq_idx} at raw {raw_idx}")
-                        path.extend(seg) # Just extend, don't drop point if gap is large, or rely on visual inspection?
-                        # If strict touch, remove duplicate point?
-                        # self.cluster_strict removes it. Let's remove if super close.
-                        # Actually let's just extend.
-                    else:
-                        # Append reversed
-                        if d_end_end > 0.05: print(f"Warning: Large gap {d_end_end} in manual sequence {seq_idx} at raw {raw_idx}")
-                        path.extend(seg[::-1])
-
-            # Loop detection
-            length = sum(self.distance(path[j], path[j+1]) for j in range(len(path)-1))
-            d_loop = self.distance(path[0], path[-1])
-            is_loop = d_loop < 0.08
-
-            final_segments.append({
-                "id": seq_idx,
-                "geometry": path,
-                "length": length,
-                "is_loop": is_loop
+        pool = []
+        for i, p in enumerate(paths):
+            length = sum(self.distance(p[k], p[k+1]) for k in range(len(p)-1))
+            pool.append({
+                'id': i,
+                'geometry': p,
+                'length': length
             })
 
-        self.update_line_segments(line_name, final_segments)
+        final_paths = []
+
+        while pool:
+            pool.sort(key=lambda x: x['length'], reverse=True)
+            seed = pool.pop(0)
+            seed_geom = seed['geometry']
+
+            extended = True
+            while extended:
+                extended = False
+                best_match = None
+                best_score = -float('inf')
+
+                if len(seed_geom) < 2: break
+
+                v_head_out = self.get_vector(seed_geom[1], seed_geom[0])
+                v_tail_out = self.get_vector(seed_geom[-2], seed_geom[-1])
+                seed_head = seed_geom[0]
+                seed_tail = seed_geom[-1]
+
+                for i, cand in enumerate(pool):
+                    cand_geom = cand['geometry']
+                    if len(cand_geom) < 2: continue
+
+                    cand_head = cand_geom[0]
+                    cand_tail = cand_geom[-1]
+                    v_c_head_out = self.get_vector(cand_geom[1], cand_geom[0])
+                    v_c_tail_out = self.get_vector(cand_geom[-2], cand_geom[-1])
+                    v_c_head_in = self.get_vector(cand_geom[0], cand_geom[1])
+                    v_c_tail_in = self.get_vector(cand_geom[-1], cand_geom[-2])
+                    v_head_in = self.get_vector(seed_geom[0], seed_geom[1])
+
+                    d_th = self.distance(seed_tail, cand_head)
+                    d_tt = self.distance(seed_tail, cand_tail)
+                    d_ct = self.distance(cand_tail, seed_head)
+                    d_ch = self.distance(cand_head, seed_head)
+
+                    # Logic: If distance is very small (< 0.01), ignore alignment check (assume continuous)
+                    ignore_align_dist = 0.01
+
+                    # 1. Tail-Head
+                    if d_th < max_gap:
+                        gap_v = self.get_vector(seed_tail, cand_head)
+                        a1 = self.calculate_angle_score(v_tail_out, gap_v) if d_th > 1e-5 else 1.0
+                        a2 = self.calculate_angle_score(gap_v, v_c_head_in) if d_th > 1e-5 else 1.0
+
+                        if d_th < ignore_align_dist: a1=1.0; a2=1.0
+
+                        if a1 > min_alignment and a2 > min_alignment:
+                            score = (a1 + a2) - (math.exp(d_th * 50) - 1)
+                            if score > best_score: best_score = score; best_match = (i, 'tail-head', score, d_th)
+
+                    # 2. Tail-Tail
+                    if d_tt < max_gap:
+                        gap_v = self.get_vector(seed_tail, cand_tail)
+                        a1 = self.calculate_angle_score(v_tail_out, gap_v) if d_tt > 1e-5 else 1.0
+                        a2 = self.calculate_angle_score(gap_v, v_c_tail_in) if d_tt > 1e-5 else 1.0
+
+                        if d_tt < ignore_align_dist: a1=1.0; a2=1.0
+
+                        if a1 > min_alignment and a2 > min_alignment:
+                            score = (a1 + a2) - (math.exp(d_tt * 50) - 1)
+                            if score > best_score: best_score = score; best_match = (i, 'tail-tail', score, d_tt)
+
+                    # 3. Cand Tail-Seed Head
+                    if d_ct < max_gap:
+                        gap_v = self.get_vector(cand_tail, seed_head)
+                        a1 = self.calculate_angle_score(v_c_tail_out, gap_v) if d_ct > 1e-5 else 1.0
+                        a2 = self.calculate_angle_score(gap_v, v_head_in) if d_ct > 1e-5 else 1.0
+
+                        if d_ct < ignore_align_dist: a1=1.0; a2=1.0
+
+                        if a1 > min_alignment and a2 > min_alignment:
+                            score = (a1 + a2) - (math.exp(d_ct * 50) - 1)
+                            if score > best_score: best_score = score; best_match = (i, 'cand_tail-seed_head', score, d_ct)
+
+                    # 4. Cand Head-Seed Head
+                    if d_ch < max_gap:
+                        gap_v = self.get_vector(cand_head, seed_head)
+                        a1 = self.calculate_angle_score(v_c_head_out, gap_v) if d_ch > 1e-5 else 1.0
+                        a2 = self.calculate_angle_score(gap_v, v_head_in) if d_ch > 1e-5 else 1.0
+
+                        if d_ch < ignore_align_dist: a1=1.0; a2=1.0
+
+                        if a1 > min_alignment and a2 > min_alignment:
+                            score = (a1 + a2) - (math.exp(d_ch * 50) - 1)
+                            if score > best_score: best_score = score; best_match = (i, 'cand_head-seed_head', score, d_ch)
+
+                if best_match:
+                    idx, mtype, score, dist = best_match
+                    cand = pool.pop(idx)
+                    cand_geom = cand['geometry']
+
+                    if mtype == 'tail-head': seed_geom.extend(cand_geom)
+                    elif mtype == 'tail-tail': seed_geom.extend(cand_geom[::-1])
+                    elif mtype == 'cand_tail-seed_head': seed_geom[:] = cand_geom + seed_geom
+                    elif mtype == 'cand_head-seed_head': seed_geom[:] = cand_geom[::-1] + seed_geom
+
+                    seed['length'] += cand['length']
+                    extended = True
+
+            final_paths.append(seed_geom)
+
+        return final_paths
 
     def clean_line(self, line_name):
         print(f"Cleaning {line_name}...")
@@ -194,70 +191,30 @@ class GeometryCleaner:
             return
         if raw_geom and isinstance(raw_geom[0][0], float): raw_geom = [raw_geom]
 
-        # Manual Configuration
-        MANUAL_CONFIG = {
-            '山手線': [
-                # Yamanote is a loop. Based on visual inspection of 50 segments:
-                # 26-27-31-33-39-36-20-46-129-130-131-132-133-134-135-136-137-53-68-52-58-50-66-67-51-59-69-55-54-60-64-62-61-47-113-114-111-103-108-93-95-94-106-102-104-97-98-100-105-96-107-91-81-88-80-82-85-87-79-78-86-83-90-89-77-76-73-75-70-74-72-71-127-128-56-117-116-121-125-124-123-122-112-119-126-22-32-41-42-40-25-21-34-28-29-35-36
-                # This is too hard to reconstruct perfectly blindly.
-                # Use the previous "Iterative Merge" logic as a base, but tighter thresholds?
-                # The user said "manual selection and seaming for the two".
-                # Let's trust the "Iterative Merge" which produced 1 component for Yamanote.
-                # Wait, Yamanote was "1 component" with iterative merge. That was good!
-                # The user said "Wrong connection at shinagawa for yamanote line, missing the whole right part on map".
-                # This implies the iterative merge *made a mistake* (jumped a gap it shouldn't have or failed to jump a valid one).
-                # Shinagawa is roughly around index 46 (start of long segment [139.72...]).
-                # The "missing right part" suggests the loop closed too early or skipped a section.
-
-                # Let's try STRICT clustering first, then define manual connections for the resulting paths?
-                # No, manual seaming of RAW segments is safest if I know the order.
-                # Since I can't interactively see the map, I will rely on the "Iterative Merge" with:
-                # 1. Tighter Max Gap (0.01) to avoid bad jumps.
-                # 2. But Yamanote has a gap of 0.06?
-                # If I use 0.01, I get multiple components.
-                # Then I manually merge those components?
-                # That's equivalent to "manual selection".
-            ],
-            '東海道線 (JR東日本)': []
-        }
-
-        # Strategy: Run strict clustering + careful merge.
-        # If line is target, use specific parameters?
-
         paths = self.cluster_strict(raw_geom, tol=1e-4)
         print(f"  Strict clustering found {len(paths)} components.")
 
-        # User said "not tolerate large distances".
-        # So reduce max_gap.
-        # But Yamanote loop gap was 0.07? That's large.
-        # Maybe the "Wrong connection" was due to merging something else.
-
+        # Relaxed parameters
+        # Yamanote needs 0.06 to catch the 0.0507 gap
+        max_gap = 0.03
         if line_name == '山手線':
-            # Yamanote needs to close the loop.
-            # Let's try a very strict merge first.
-            paths = self.merge_components(paths, max_gap=0.005) # Only very close
-            # Then force merge the remaining large components if they look like the loop?
-            # Or just rely on the angle score with a slightly larger gap but HIGH angle requirement.
-            # Let's try increasing gap ONLY for high-score matches.
-            paths = self.merge_components(paths, max_gap=0.08)
+            max_gap = 0.06
 
-        elif line_name == '東海道線 (JR東日本)':
-            # Needs to be 2 routes.
-            paths = self.merge_components(paths, max_gap=0.01)
-            # Then maybe 0.03?
-            paths = self.merge_components(paths, max_gap=0.04)
-
-        else:
-            paths = self.merge_components(paths, max_gap=0.03)
+        paths = self.extend_seeds(paths, max_gap=max_gap, min_alignment=0.0)
+        print(f"  After extension: {len(paths)} components.")
 
         final_segments = []
         for i, path in enumerate(paths):
             length = sum(self.distance(path[j], path[j+1]) for j in range(len(path)-1))
             d_loop = self.distance(path[0], path[-1])
-            is_loop = d_loop < 0.08
+            is_loop = False
 
-            # Filter noise? User said "no more or less routes".
-            # For Tokaido, if we have tiny segments left, maybe drop them or report them.
+            if length > 0.1:
+                if d_loop < 0.08:
+                    is_loop = True
+                    if line_name == '山手線' and length > 0.15:
+                        path.append(path[0])
+                        print(f"  Closed loop for {line_name} (Length {length:.3f})")
 
             final_segments.append({
                 "id": i,
