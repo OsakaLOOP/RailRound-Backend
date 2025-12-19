@@ -213,7 +213,7 @@ const TitleBar = () => {
            style={styles.dragRegion}
            onDoubleClick={handleDoubleClick}
            onContextMenu={handleContextMenu}>
-        <span style={styles.title}>Railround Python Backend</span>
+        <span style={styles.title}>Railround Python 后端</span>
       </div>
 
       {/* 3. 右侧：占位 (保持标题居中) */}
