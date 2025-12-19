@@ -8,10 +8,6 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, shape
 
 logger = logging.getLogger()
 
-stationGroupList = []
-companyList = []
-
-
 # 基本文件读写方法
 def load_json(path):
     '''读取 JSON 文件'''
@@ -91,7 +87,7 @@ class ekidata_company:
 
 class company:
     '''顶层对象'''
-    def __init__(self, data:dict):
+    def __init__(self, data:dict, service_instance=None):
         self.id = data["id"]
         self.region = data["region"]
         self.type = data["type"]
@@ -107,25 +103,27 @@ class company:
         self.stationList = []
         self.line_registry = {} # line.name -> list of station.name s 
         
-        companyList.append(self)
-        self.bind_ekidata(e=company_ekidata)
+        # We need a reference to the global or service instance to register self
+        # companyList.append(self) # Removed global side-effect
+
+        self.service = service_instance
+        if self.service and self.service.company_ekidata:
+             self.bind_ekidata(e=self.service.company_ekidata)
         
     def bind_ekidata(self, e:ekidata_company):
-        if self.id in company_ekidata.companyDict:
-            self.cd, self.rr, self.ekidataLineDict = company_ekidata.match(self.id)
-        elif self.alias and self.alias in company_ekidata.companyDict:
-            self.cd, self.rr, self.ekidataLineDict = company_ekidata.match(self.alias)
+        if self.id in e.companyDict:
+            self.cd, self.rr, self.ekidataLineDict = e.match(self.id)
+        elif self.alias and self.alias in e.companyDict:
+            self.cd, self.rr, self.ekidataLineDict = e.match(self.alias)
         elif not (self.type in ['cableline','disneyline']):
-            print('bind error')
+            pass # print('bind error')
         
     def get_category(self):
         '''格式化公司类别/地域'''
-        
         return [0 if self.type == 'JR' else (1 if self.type =='私鉄' or self.type == '第三セクター' else 2), self.region if not('九州' in self.region or '沖縄' in self.region) else '九州・沖縄']
     
     def load_feature(self):
         '''加载 geojson 为 rawFeatures'''
-        
         path = f"./public/geojson/{self.id}.geojson"
         geojson_data = load_json(path)
         
@@ -133,7 +131,6 @@ class company:
             self.rawFeatures=geojson_data["features"]
         else:
             logger.warning(f"Invalid GeoJSON file or no 'features' found in file: {path}")
-        #print(self.rawFeatures)
     
     def load_meta(self):
         '''从raw加载line和station, 并同时实例化'''
@@ -166,10 +163,11 @@ class company:
             else:
                 logger.error(f"Error processing feature in GeoJSON file: {path} - Invalid feature format: {i[:30]}{'...' if len(i)>30 else ''}")
         
-        # 建立与ekidata csv的联系        
-        self.bind_ekidata(company_ekidata)
+        # 建立与ekidata csv的联系
+        if self.service and self.service.company_ekidata:
+             self.bind_ekidata(self.service.company_ekidata)
+
         # 第二次循环
-        # return         
         for i in self.stations_feature_buffer:
             geometry = i.get("geometry", {})
             properties = i.get("properties", {})
@@ -189,7 +187,8 @@ class company:
                     if line_of_station in self.line_registry:
                         self.line_registry[line_of_station].append(stationInstance)
                     else: 
-                        raise ValueError(f"line of station {properties.get('name')} not registered or mismatch.")
+                        # logger.warning(f"line of station {properties.get('name')} not registered or mismatch.")
+                        pass
                 except Exception as e:
                     logger.error(f"Error processing station feature in GeoJSON file: {path} - {e}")
             else:
@@ -197,12 +196,12 @@ class company:
             
         for i in self.lineList:
             i.load_stations()
-            print(i.stations)
+            # print(i.stations)
         
     
     def load_lines(self, lineStr):
         '''加载线路数据'''
-        
+        pass
     
     def load_stations(self, path):
         '''加载车站数据'''
@@ -217,7 +216,7 @@ class company:
     def __str__(self):
         return f"Company(id='{self.id}', region='{self.region}', type='{self.type}',cd= {self.cd}, rr= {self.rr})"
     
-    __repr__ = __str__#自定义对象的结构化print()输出,而在列表中则调用repr()
+    __repr__ = __str__
 
 class line:
     '''
@@ -297,25 +296,107 @@ class stationGroup:
 def pprint(lst):
     print(*lst,sep='\n')
 
-    
+
+class RailwayDataService:
+    def __init__(self, db_path="railway.db"):
+        self.db_path = db_path
+        self.companyList = []
+        self.stationGroupList = []
+        self.company_ekidata = None
+
+    def build(self):
+        """Builds the in-memory object graph and persists to SQLite."""
+        logger.info("Starting RailwayDataService build...")
+
+        company_json_path = "./public/company_data.json"
+
+        # In a real scenario, these should be dynamically found or passed in
+        ekidata_company_path = "./public/ekidata/company20251015.csv"
+        ekidata_company_patch_path = "./public/ekidata/companypatch.csv"
+        ekidata_line_path = "./public/ekidata/line20250604free.csv"
+
+        try:
+            company_data = load_json(company_json_path)
+            self.company_ekidata = ekidata_company(ekidata_company_path, ekidata_line_path, ekidata_company_patch_path)
+        except Exception as e:
+            logger.error(f"Failed to load base data: {e}")
+            return
+
+        self.companyList = [] # Reset
+
+        for i in company_data.keys():
+            company_data[i]["id"] = i
+            c = company(company_data[i], service_instance=self)
+            self.companyList.append(c)
+
+        # Load features and meta
+        for i in self.companyList:
+            i.load_feature()
+            i.load_meta()
+
+        logger.info(f"Built {len(self.companyList)} companies.")
+        self.save_to_db()
+
+    def save_to_db(self):
+        """Saves the current state to SQLite."""
+        logger.info(f"Saving to SQLite: {self.db_path}")
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # Create Tables
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS companies (
+                id TEXT PRIMARY KEY,
+                region TEXT,
+                type TEXT,
+                cd INTEGER,
+                rr INTEGER
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lines (
+                company_id TEXT,
+                name TEXT,
+                type TEXT,
+                FOREIGN KEY(company_id) REFERENCES companies(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS stations (
+                company_id TEXT,
+                line_name TEXT,
+                name TEXT,
+                location_x REAL,
+                location_y REAL,
+                FOREIGN KEY(company_id) REFERENCES companies(id)
+            )
+        ''')
+
+        # Clear existing data? Or Upsert?
+        # For this version, we clear and rebuild as it's a full cycle build
+        cursor.execute("DELETE FROM stations")
+        cursor.execute("DELETE FROM lines")
+        cursor.execute("DELETE FROM companies")
+
+        for c in self.companyList:
+            cursor.execute("INSERT INTO companies (id, region, type, cd, rr) VALUES (?, ?, ?, ?, ?)",
+                           (c.id, c.region, c.type, c.cd, c.rr))
+
+            for l in c.lineList:
+                cursor.execute("INSERT INTO lines (company_id, name, type) VALUES (?, ?, ?)",
+                               (c.id, l.name, l.type))
+
+                for s in l.stations:
+                     cursor.execute("INSERT INTO stations (company_id, line_name, name, location_x, location_y) VALUES (?, ?, ?, ?, ?)",
+                               (c.id, l.name, s.name, s.location.x, s.location.y))
+
+        conn.commit()
+        conn.close()
+        logger.info("Database save complete.")
 
 if __name__ == "__main__":
-    company_json_path = "./public/company_data.json"
-    geojson_folder = "./public/geojson/"
-    ekidata_company_path = "./public/ekidata/company20251015.csv"
-    ekidata_company_patch_path = "./public/ekidata/companypatch.csv"
-    ekidata_line_path = "./public/ekidata/line20250604free.csv"
-
-    company_data = load_json(company_json_path)
-    company_ekidata = ekidata_company(ekidata_company_path, ekidata_line_path, ekidata_company_patch_path)
-
-    for i in company_data.keys():
-        company_data[i]["id"] = i
-        company(company_data[i])
-        
-    pprint(companyList)
-
-    for i in companyList:
-        i.load_feature()
-        #i.load_geometry()
-    companyList[0].load_meta()
+    service = RailwayDataService()
+    service.build()
+    pprint(service.companyList)

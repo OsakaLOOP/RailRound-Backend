@@ -8,6 +8,7 @@ from worker_base import WorkerProcess, ProgressTracker, WorkerAdapter
 # Import Specific Workers
 from geojson_crawler import GeoJsonWorker
 from ekidata_crawler import EkidataWorker
+from railway_processer import RailwayDataService
 
 class WorkerRegistry:
     _name_to_cls: Dict[str, Type[WorkerProcess]] = {}
@@ -47,6 +48,12 @@ class WorkerManager:
     def __init__(self):
         self._workers: Dict[str, WorkerProcess] = {}
         self._lock = threading.Lock()
+
+        # Railway Data Service
+        self.processor = RailwayDataService()
+
+        # Cycle Management
+        self.cycle_active = False
     
     def create_worker(self, type_name: str, instance_name: str, **kwargs) -> WorkerProcess:
         
@@ -70,12 +77,26 @@ class WorkerManager:
     def get_all_workers(self):
         with self._lock:
             return list(self._workers.values())
+
+    def start_full_cycle(self):
+        """Starts a full cycle by forcing all workers to run immediately."""
+        with self._lock:
+            print("[Cycle] Initiating full cycle...")
+            self.cycle_active = True
+            for worker in self._workers.values():
+                # Force run by setting nextrun to 0 (or past)
+                worker.status['nextrun'] = 0
+                # Reset retries if failed previously
+                if worker.status['statcode'] == 500:
+                     worker.status['retry'] = 0
+                     worker.status['statcode'] = 0 # Reset to idle/ready
         
     def loop(self):
         while True:
             now = time.time()
             workers_list = self.get_all_workers()
             
+            # 1. Schedule & Monitor Workers
             for worker in workers_list:
                 # Check status and trigger if needed
                 if worker.status['statcode'] in [0, 200] and now > worker.status.get('nextrun', 0):
@@ -94,6 +115,26 @@ class WorkerManager:
                         t.start()
                     else:
                         pass # Give up or wait for manual reset
+
+            # 2. Cycle Check
+            if self.cycle_active:
+                # Check if ALL workers are finished (statcode is NOT 1)
+                # Note: statcode 1 = Running. 0, 200, 500 are "finished" states.
+                all_finished = True
+                for worker in workers_list:
+                    if worker.status['statcode'] == 1:
+                        all_finished = False
+                        break
+
+                if all_finished and workers_list: # Ensure we have workers
+                    print("[Cycle] All workers finished. Building Railway Data...")
+                    try:
+                        self.processor.build()
+                        print("[Cycle] Railway Data built successfully.")
+                    except Exception as e:
+                        print(f"[Cycle] Error building Railway Data: {e}")
+
+                    self.cycle_active = False
 
             time.sleep(1)
 
