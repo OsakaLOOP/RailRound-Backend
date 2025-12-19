@@ -28,12 +28,28 @@ class GeometryCleaner:
     def distance(self, p1, p2):
         return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
+    def get_vector(self, p_start, p_end):
+        return [p_end[0] - p_start[0], p_end[1] - p_start[1]]
+
+    def calculate_angle_score(self, vec1, vec2):
+        """
+        Calculate cosine of the angle between two vectors.
+        Returns a value between -1.0 (180 deg) and 1.0 (0 deg).
+        Closer to 1.0 means smoother continuation.
+        """
+        len1 = math.sqrt(vec1[0]**2 + vec1[1]**2)
+        len2 = math.sqrt(vec2[0]**2 + vec2[1]**2)
+
+        if len1 == 0 or len2 == 0:
+            return -1.0
+
+        return (vec1[0]*vec2[0] + vec1[1]*vec2[1]) / (len1 * len2)
+
     def cluster_strict(self, raw_segments, tol=1e-4):
         """
         Merges segments that strictly touch (within tolerance).
         Returns a list of lists of points (paths).
         """
-        # Convert all to lists
         pool = [s for s in raw_segments if len(s) > 0]
         paths = []
 
@@ -49,6 +65,7 @@ class GeometryCleaner:
                 best_idx = -1
                 match_type = None
 
+                # Strict clustering only checks distance
                 for i, seg in enumerate(pool):
                     s_start = seg[0]
                     s_end = seg[-1]
@@ -79,18 +96,31 @@ class GeometryCleaner:
 
     def merge_components(self, paths, max_gap=0.03):
         """
-        Iteratively merges the closest pair of path endpoints.
+        Iteratively merges path endpoints considering distance AND angle.
         """
-        # We work with indices into 'paths' list
-        # active_indices tracks which paths are still valid (not merged into another)
-        # However, modifying the list is tricky. Let's use a while loop and reconstruct.
-
         while True:
-            best_dist = float('inf')
-            best_pair = None # (i, j, match_type)
+            best_score = -float('inf') # We want to maximize score
+            best_pair = None # (i, j, match_type, distance)
 
             n = len(paths)
             if n < 2: break
+
+            # Precompute vectors for ends of all paths
+            # vec_start: Entering the path at start (p1->p0) ? No, standard flow.
+            # We need vectors pointing OUT from the endpoints to measure alignment with the connecting vector.
+            # Out from End: p[-2] -> p[-1]
+            # Out from Start: p[1] -> p[0]
+
+            vectors = []
+            for p in paths:
+                if len(p) < 2:
+                    vectors.append(([0,0], [0,0]))
+                    continue
+                v_start_out = self.get_vector(p[1], p[0])
+                v_end_out = self.get_vector(p[-2], p[-1])
+                vectors.append((v_start_out, v_end_out))
+
+            candidates = []
 
             for i in range(n):
                 for j in range(i + 1, n):
@@ -98,45 +128,127 @@ class GeometryCleaner:
                     p2 = paths[j]
 
                     # 4 combinations
-                    d1 = self.distance(p1[-1], p2[0]) # end-start
-                    if d1 < best_dist: best_dist = d1; best_pair = (i, j, 'end-start')
+                    # 1. End of P1 -> Start of P2
+                    d = self.distance(p1[-1], p2[0])
+                    if d < max_gap:
+                        # Vector P1_end -> P2_start (The gap bridge)
+                        v_bridge = self.get_vector(p1[-1], p2[0])
+                        # Angle 1: P1_end_out vs Bridge
+                        a1 = self.calculate_angle_score(vectors[i][1], v_bridge)
+                        # Angle 2: Bridge vs P2_start_in (which is -P2_start_out)
+                        # v_bridge points INTO P2. P2_start_out points OUT of P2. They should be opposite?
+                        # Ideally P1->Bridge->P2 is a line.
+                        # P1_end_out aligned with Bridge aligned with (P2[0]->P2[1]) i.e. -P2_start_out.
+                        v_p2_in = self.get_vector(p2[0], p2[1])
+                        a2 = self.calculate_angle_score(v_bridge, v_p2_in)
 
-                    d2 = self.distance(p1[-1], p2[-1]) # end-end
-                    if d2 < best_dist: best_dist = d2; best_pair = (i, j, 'end-end')
+                        # If distance is super small, angle matters less.
+                        # If distance is large, angle implies continuity.
 
-                    d3 = self.distance(p1[0], p2[-1]) # start-end
-                    if d3 < best_dist: best_dist = d3; best_pair = (i, j, 'start-end')
+                        # Score: Minimize distance, Maximize angle.
+                        # Let's normalize distance. 0.03 is max.
+                        # dist_penalty = d / max_gap  (0 to 1)
+                        # angle_bonus = (a1 + a2) / 2 ( -1 to 1)
+                        # combined = angle_bonus - weight * dist_penalty
 
-                    d4 = self.distance(p1[0], p2[0]) # start-start
-                    if d4 < best_dist: best_dist = d4; best_pair = (i, j, 'start-start')
+                        # However, if d is tiny (clustering missed it), angle is irrelevant (noise).
+                        if d < 1e-4:
+                            score = 1000.0 # Prioritize strict touches
+                        else:
+                            # We require decent angle alignment for gaps.
+                            # If sharp turn (angle < 0), score is low.
+                            avg_angle = (a1 + a2) / 2
+                            if avg_angle < -0.5: # 120 deg turn?
+                                score = -1000.0
+                            else:
+                                score = avg_angle - (d * 100) # Weight distance heavily
 
-            if best_pair and best_dist < max_gap:
-                i, j, mtype = best_pair
-                print(f"  Merging paths {i} and {j} (gap {best_dist:.4f}, {mtype})")
+                        candidates.append((score, i, j, 'end-start', d))
 
-                path_i = paths[i]
-                path_j = paths[j]
+                    # 2. End of P1 -> End of P2 (Reverse P2)
+                    d = self.distance(p1[-1], p2[-1])
+                    if d < max_gap:
+                        v_bridge = self.get_vector(p1[-1], p2[-1])
+                        a1 = self.calculate_angle_score(vectors[i][1], v_bridge)
+                        # P2 reversed: Start is P2[-1], vector in is P2[-1]->P2[-2] (which is P2_end_out flipped)
+                        v_p2_in = self.get_vector(p2[-1], p2[-2]) # = -v_end_out
+                        a2 = self.calculate_angle_score(v_bridge, v_p2_in)
 
-                new_path = []
-                if mtype == 'end-start':
-                    new_path = path_i + path_j
-                elif mtype == 'end-end':
-                    new_path = path_i + path_j[::-1]
-                elif mtype == 'start-end':
-                    new_path = path_j + path_i
-                elif mtype == 'start-start':
-                    new_path = path_j[::-1] + path_i
+                        if d < 1e-4: score = 1000.0
+                        else:
+                            avg_angle = (a1 + a2) / 2
+                            if avg_angle < -0.5: score = -1000.0
+                            else: score = avg_angle - (d * 100)
+                        candidates.append((score, i, j, 'end-end', d))
 
-                # Replace path i with new_path, remove path j
-                # Careful with indices. We reconstruct the list.
-                next_paths = []
-                next_paths.append(new_path)
-                for k in range(n):
-                    if k != i and k != j:
-                        next_paths.append(paths[k])
-                paths = next_paths
-            else:
+                    # 3. Start of P1 -> End of P2 (Reverse P1? No, P2->P1)
+                    # We treat merge as symmetric, just removing one.
+                    # P2 End -> P1 Start
+                    d = self.distance(p2[-1], p1[0])
+                    if d < max_gap:
+                        v_bridge = self.get_vector(p2[-1], p1[0])
+                        a1 = self.calculate_angle_score(vectors[j][1], v_bridge) # P2 end out
+                        v_p1_in = self.get_vector(p1[0], p1[1])
+                        a2 = self.calculate_angle_score(v_bridge, v_p1_in)
+
+                        if d < 1e-4: score = 1000.0
+                        else:
+                            avg_angle = (a1 + a2) / 2
+                            if avg_angle < -0.5: score = -1000.0
+                            else: score = avg_angle - (d * 100)
+                        candidates.append((score, i, j, 'start-end', d)) # i is P1 (start), j is P2 (end) -> P2...P1
+
+                    # 4. Start of P1 -> Start of P2
+                    d = self.distance(p1[0], p2[0])
+                    if d < max_gap:
+                        # Connect P1[0] and P2[0]. One must reverse.
+                        # Let's say we reverse P1. P1... -> P2...
+                        # P1[1]->P1[0] (v_start_out) -> bridge -> P2[0]->P2[1]
+                        v_bridge = self.get_vector(p1[0], p2[0])
+                        a1 = self.calculate_angle_score(vectors[i][0], v_bridge)
+                        v_p2_in = self.get_vector(p2[0], p2[1])
+                        a2 = self.calculate_angle_score(v_bridge, v_p2_in)
+
+                        if d < 1e-4: score = 1000.0
+                        else:
+                            avg_angle = (a1 + a2) / 2
+                            if avg_angle < -0.5: score = -1000.0
+                            else: score = avg_angle - (d * 100)
+                        candidates.append((score, i, j, 'start-start', d))
+
+            if not candidates:
                 break
+
+            # Sort by score descending
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            best = candidates[0]
+
+            # Threshold?
+            if best[0] <= -500: # Threshold for "bad match" (large distance or terrible angle)
+                break
+
+            score, i, j, mtype, dist = best
+            print(f"  Merging paths {i} and {j} (score {score:.2f}, dist {dist:.4f}, {mtype})")
+
+            path_i = paths[i]
+            path_j = paths[j]
+
+            new_path = []
+            if mtype == 'end-start': # i -> j
+                new_path = path_i + path_j
+            elif mtype == 'end-end': # i -> j(rev)
+                new_path = path_i + path_j[::-1]
+            elif mtype == 'start-end': # j -> i
+                new_path = path_j + path_i
+            elif mtype == 'start-start': # i(rev) -> j
+                new_path = path_i[::-1] + path_j
+
+            # Reconstruct list
+            next_paths = [new_path]
+            for k in range(n):
+                if k != i and k != j:
+                    next_paths.append(paths[k])
+            paths = next_paths
 
         return paths
 
@@ -154,9 +266,9 @@ class GeometryCleaner:
         paths = self.cluster_strict(raw_geom, tol=1e-4)
         print(f"  Strict clustering found {len(paths)} components.")
 
-        # 2. Merge Components (Gap Bridging)
-        # Using 0.03 (~3km) as a safe heuristic for rail gaps
-        paths = self.merge_components(paths, max_gap=0.03)
+        # 2. Merge Components (Gap Bridging with Angle)
+        # Using slightly relaxed 0.05 (~5km) but relying on angle score to filter bad ones
+        paths = self.merge_components(paths, max_gap=0.05)
         print(f"  After merging: {len(paths)} components.")
 
         # 3. Finalize
@@ -166,11 +278,10 @@ class GeometryCleaner:
 
             # Loop detection
             d_loop = self.distance(path[0], path[-1])
-            is_loop = d_loop < 0.08 # Tolerance for closing loop
+            is_loop = d_loop < 0.08
 
             if is_loop:
                 print(f"  Path {i}: Detected loop gap {d_loop:.4f}. Leaving cut.")
-                # We do not append the point, keeping it a LineString "cut" at the gap.
 
             print(f"  Path {i}: {len(path)} points, Length ~{length:.4f}, Loop: {is_loop}")
 
