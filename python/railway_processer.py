@@ -4,6 +4,7 @@ import hashlib
 import pandas as pd
 import sqlite3
 import shapely
+import os
 from shapely.geometry import Point, Polygon, LineString, MultiLineString, shape
 
 logger = logging.getLogger()
@@ -18,7 +19,7 @@ def load_json(path):
         return data
     except Exception as e:
         logger.error(f"Error reading JSON file: {e}")
-        print(e)
+        # print(e)
         return {}
 
 def load_csv(path):
@@ -103,9 +104,6 @@ class company:
         self.stationList = []
         self.line_registry = {} # line.name -> list of station.name s 
         
-        # We need a reference to the global or service instance to register self
-        # companyList.append(self) # Removed global side-effect
-
         self.service = service_instance
         if self.service and self.service.company_ekidata:
              self.bind_ekidata(e=self.service.company_ekidata)
@@ -124,7 +122,12 @@ class company:
     
     def load_feature(self):
         '''加载 geojson 为 rawFeatures'''
-        path = f"./public/geojson/{self.id}.geojson"
+        # Use configurable path if available, else default
+        geojson_dir = "./public/geojson"
+        if self.service and hasattr(self.service, 'geojson_dir'):
+             geojson_dir = self.service.geojson_dir
+
+        path = os.path.join(geojson_dir, f"{self.id}.geojson")
         geojson_data = load_json(path)
         
         if geojson_data.get('type')=="FeatureCollection" and "features" in geojson_data:
@@ -135,7 +138,12 @@ class company:
     def load_meta(self):
         '''从raw加载line和station, 并同时实例化'''
         
-        path= f"./public/geojson/{self.id}.geojson"
+        # Path for logging/error reporting
+        geojson_dir = "./public/geojson"
+        if self.service and hasattr(self.service, 'geojson_dir'):
+             geojson_dir = self.service.geojson_dir
+        path = os.path.join(geojson_dir, f"{self.id}.geojson")
+
         self.stations_feature_buffer = []
         # 第一次循环
         for i in self.rawFeatures:
@@ -298,8 +306,12 @@ def pprint(lst):
 
 
 class RailwayDataService:
-    def __init__(self, db_path="railway.db"):
+    def __init__(self, db_path="railway.db", data_dir="./public"):
         self.db_path = db_path
+        self.data_dir = data_dir
+        self.geojson_dir = os.path.join(data_dir, "geojson")
+        self.ekidata_dir = os.path.join(data_dir, "ekidata")
+
         self.companyList = []
         self.stationGroupList = []
         self.company_ekidata = None
@@ -308,33 +320,42 @@ class RailwayDataService:
         """Builds the in-memory object graph and persists to SQLite."""
         logger.info("Starting RailwayDataService build...")
 
-        company_json_path = "./public/company_data.json"
+        company_json_path = os.path.join(self.data_dir, "company_data.json")
 
         # In a real scenario, these should be dynamically found or passed in
-        ekidata_company_path = "./public/ekidata/company20251015.csv"
-        ekidata_company_patch_path = "./public/ekidata/companypatch.csv"
-        ekidata_line_path = "./public/ekidata/line20250604free.csv"
+        ekidata_company_path = os.path.join(self.ekidata_dir, "company20251015.csv")
+        ekidata_company_patch_path = os.path.join(self.ekidata_dir, "companypatch.csv")
+        ekidata_line_path = os.path.join(self.ekidata_dir, "line20250604free.csv")
 
         try:
             company_data = load_json(company_json_path)
-            self.company_ekidata = ekidata_company(ekidata_company_path, ekidata_line_path, ekidata_company_patch_path)
+            # Only load ekidata if files exist (allows for partial mocks)
+            if os.path.exists(ekidata_company_path):
+                 self.company_ekidata = ekidata_company(ekidata_company_path, ekidata_line_path, ekidata_company_patch_path)
+            else:
+                 logger.warning(f"Ekidata files not found at {ekidata_company_path}, skipping ekidata linkage.")
+                 self.company_ekidata = None
+
         except Exception as e:
             logger.error(f"Failed to load base data: {e}")
             return
 
-        self.companyList = [] # Reset
+        temp_company_list = [] # Use local list for thread safety
 
         for i in company_data.keys():
             company_data[i]["id"] = i
             c = company(company_data[i], service_instance=self)
-            self.companyList.append(c)
+            temp_company_list.append(c)
 
         # Load features and meta
-        for i in self.companyList:
+        for i in temp_company_list:
             i.load_feature()
             i.load_meta()
 
+        # Atomic swap
+        self.companyList = temp_company_list
         logger.info(f"Built {len(self.companyList)} companies.")
+
         self.save_to_db()
 
     def save_to_db(self):
@@ -353,7 +374,7 @@ class RailwayDataService:
                 rr INTEGER
             )
         ''')
-        
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS lines (
                 company_id TEXT,
