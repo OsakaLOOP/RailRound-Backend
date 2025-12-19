@@ -28,131 +28,44 @@ class GeometryCleaner:
     def distance(self, p1, p2):
         return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
 
-    def calculate_angle_score(self, vec1, vec2):
+    def cluster_strict(self, raw_segments, tol=1e-4):
         """
-        Calculate cosine of the angle between two vectors.
-        Returns a value between -1.0 (180 deg) and 1.0 (0 deg).
-        Closer to 1.0 means smoother continuation.
+        Merges segments that strictly touch (within tolerance).
+        Returns a list of lists of points (paths).
         """
-        # Normalize vectors
-        len1 = math.sqrt(vec1[0]**2 + vec1[1]**2)
-        len2 = math.sqrt(vec2[0]**2 + vec2[1]**2)
-
-        if len1 == 0 or len2 == 0:
-            return -1.0 # Treat zero length vectors as bad matches
-
-        return (vec1[0]*vec2[0] + vec1[1]*vec2[1]) / (len1 * len2)
-
-    def get_vector(self, p_start, p_end):
-        return [p_end[0] - p_start[0], p_end[1] - p_start[1]]
-
-    def seam_segments(self, raw_segments):
-        # raw_segments is a list of lists of points [[x,y], ...]
-        if not raw_segments:
-            return []
-
-        # Convert all segments to lists of points (if they aren't already)
-        pool = [s for s in raw_segments if s]
+        # Convert all to lists
+        pool = [s for s in raw_segments if len(s) > 0]
         paths = []
 
         while pool:
-            # Start a new path with the first segment in the pool
-            # Heuristic: picking longest segment first might be better,
-            # but let's stick to first available for stability unless optimized further.
             current_path = pool.pop(0)
             changed = True
 
             while changed:
                 changed = False
-
-                # Check connection at START of path
                 start_pt = current_path[0]
-                # Check connection at END of path
                 end_pt = current_path[-1]
 
-                best_match_idx = -1
-                best_match_score = -2.0 # Cosine similarity range is [-1, 1]
-                match_type = None # 'start-start', 'start-end', 'end-start', 'end-end'
-
-                # Tolerance for float comparison (approx 11m if lat/lon)
-                tol = 1e-4
-
-                # Vectors for current path ends
-                # Start vector: pointing INWARDS from start (p1 -> p0 is outward, we want inward flow p0->p1? No, we want continuity)
-                # If we extend backwards from start: new_seg -> current_path
-                # Vector leaving new_seg = (new_end - new_prev)
-                # Vector entering current_path = (curr_1 - curr_0)
-                # We want these to align.
-
-                if len(current_path) >= 2:
-                    vec_start_out = self.get_vector(current_path[1], current_path[0]) # Pointing out from start
-                    vec_end_out = self.get_vector(current_path[-2], current_path[-1]) # Pointing out from end
-                else:
-                    vec_start_out = [0, 0]
-                    vec_end_out = [0, 0]
+                best_idx = -1
+                match_type = None
 
                 for i, seg in enumerate(pool):
-                    if len(seg) < 2: continue # Ignore single points
-
                     s_start = seg[0]
                     s_end = seg[-1]
 
-                    # Candidate 1: Connect seg start to path end (end-start)
                     if self.distance(end_pt, s_start) < tol:
-                        # Vector entering junction from path: vec_end_out
-                        # Vector leaving junction into seg: s[1] - s[0]
-                        vec_seg_in = self.get_vector(s_start, seg[1])
-                        score = self.calculate_angle_score(vec_end_out, vec_seg_in)
+                        best_idx = i; match_type = 'end-start'; break
+                    elif self.distance(end_pt, s_end) < tol:
+                        best_idx = i; match_type = 'end-end'; break
+                    elif self.distance(start_pt, s_end) < tol:
+                        best_idx = i; match_type = 'start-end'; break
+                    elif self.distance(start_pt, s_start) < tol:
+                        best_idx = i; match_type = 'start-start'; break
 
-                        if score > best_match_score:
-                            best_match_score = score
-                            best_match_idx = i
-                            match_type = 'end-start'
-
-                    # Candidate 2: Connect seg end to path end (end-end) -> Reverse seg
-                    if self.distance(end_pt, s_end) < tol:
-                        # Vector leaving junction into reversed seg: s[-2] - s[-1]
-                        vec_seg_in = self.get_vector(s_end, seg[-2])
-                        score = self.calculate_angle_score(vec_end_out, vec_seg_in)
-
-                        if score > best_match_score:
-                            best_match_score = score
-                            best_match_idx = i
-                            match_type = 'end-end'
-
-                    # Candidate 3: Connect seg end to path start (start-end)
-                    if self.distance(start_pt, s_end) < tol:
-                        # Vector leaving junction into path: vec_start_in = (curr[1] - curr[0]) -- wait, logic inverse
-                        # We are moving form seg -> path.
-                        # Vector exiting seg: s_end - s_prev
-                        # Vector entering path: curr[1] - curr[0] (which is -vec_start_out)
-                        vec_seg_out = self.get_vector(seg[-2], s_end)
-                        vec_path_in = self.get_vector(start_pt, current_path[1])
-                        score = self.calculate_angle_score(vec_seg_out, vec_path_in)
-
-                        if score > best_match_score:
-                            best_match_score = score
-                            best_match_idx = i
-                            match_type = 'start-end'
-
-                    # Candidate 4: Connect seg start to path start (start-start) -> Reverse seg
-                    if self.distance(start_pt, s_start) < tol:
-                        # Vector exiting reversed seg: s_start - s_next
-                        vec_seg_out = self.get_vector(seg[1], s_start)
-                        vec_path_in = self.get_vector(start_pt, current_path[1])
-                        score = self.calculate_angle_score(vec_seg_out, vec_path_in)
-
-                        if score > best_match_score:
-                            best_match_score = score
-                            best_match_idx = i
-                            match_type = 'start-start'
-
-                # Apply the best match if one exists
-                # We can enforce a minimum score if we want to avoid sharp turns, e.g. > -0.5
-                if best_match_idx != -1:
-                    seg = pool.pop(best_match_idx)
+                if best_idx != -1:
+                    seg = pool.pop(best_idx)
                     if match_type == 'end-start':
-                        current_path.extend(seg[1:]) # Avoid duplicating the join point
+                        current_path.extend(seg[1:])
                     elif match_type == 'end-end':
                         current_path.extend(seg[::-1][1:])
                     elif match_type == 'start-end':
@@ -161,70 +74,69 @@ class GeometryCleaner:
                         current_path = seg[::-1][:-1] + current_path
                     changed = True
 
-                # If no strict match found, look for nearest neighbor within looser tolerance (Gap Bridging)
-                elif not changed and pool:
-                    gap_tol = 0.05 # ~5km gap tolerance
-                    nearest_idx = -1
-                    min_dist = float('inf')
-                    gap_match_type = None
-
-                    for i, seg in enumerate(pool):
-                        if len(seg) < 1: continue
-                        s_start = seg[0]
-                        s_end = seg[-1]
-
-                        # dist to end_pt
-                        d_end_start = self.distance(end_pt, s_start)
-                        d_end_end = self.distance(end_pt, s_end)
-                        # dist to start_pt
-                        d_start_end = self.distance(start_pt, s_end)
-                        d_start_start = self.distance(start_pt, s_start)
-
-                        if d_end_start < min_dist:
-                            min_dist = d_end_start
-                            nearest_idx = i
-                            gap_match_type = 'end-start'
-                        if d_end_end < min_dist:
-                            min_dist = d_end_end
-                            nearest_idx = i
-                            gap_match_type = 'end-end'
-                        if d_start_end < min_dist:
-                            min_dist = d_start_end
-                            nearest_idx = i
-                            gap_match_type = 'start-end'
-                        if d_start_start < min_dist:
-                            min_dist = d_start_start
-                            nearest_idx = i
-                            gap_match_type = 'start-start'
-
-                    if nearest_idx != -1 and min_dist < gap_tol:
-                        print(f"  Bridging gap of {min_dist:.4f} units ({gap_match_type})")
-                        seg = pool.pop(nearest_idx)
-
-                        if gap_match_type == 'end-start':
-                            # Bridge from end_pt to s_start
-                            current_path.extend(seg) # Include start point implies a jump, or we add interpolated points?
-                            # Since this is a "bridge", we just connect them.
-                            # If we want a clean line string, we just append the points.
-                            # The gap is implicitly a straight line segment between end_pt and seg[0].
-                        elif gap_match_type == 'end-end':
-                            current_path.extend(seg[::-1])
-                        elif gap_match_type == 'start-end':
-                            current_path = seg + current_path
-                        elif gap_match_type == 'start-start':
-                            current_path = seg[::-1] + current_path
-                        changed = True
-
-            # Loop Closure Check for single path
-            if len(current_path) > 2:
-                d_loop = self.distance(current_path[0], current_path[-1])
-                is_loop = d_loop < 0.08
-                if is_loop:
-                     print(f"  Detected loop gap of {d_loop:.4f} units")
-                     # User instruction: "given a cut to make it linear".
-                     # We do NOT append the closing point, leaving it as an open 'cut' line.
-
             paths.append(current_path)
+        return paths
+
+    def merge_components(self, paths, max_gap=0.03):
+        """
+        Iteratively merges the closest pair of path endpoints.
+        """
+        # We work with indices into 'paths' list
+        # active_indices tracks which paths are still valid (not merged into another)
+        # However, modifying the list is tricky. Let's use a while loop and reconstruct.
+
+        while True:
+            best_dist = float('inf')
+            best_pair = None # (i, j, match_type)
+
+            n = len(paths)
+            if n < 2: break
+
+            for i in range(n):
+                for j in range(i + 1, n):
+                    p1 = paths[i]
+                    p2 = paths[j]
+
+                    # 4 combinations
+                    d1 = self.distance(p1[-1], p2[0]) # end-start
+                    if d1 < best_dist: best_dist = d1; best_pair = (i, j, 'end-start')
+
+                    d2 = self.distance(p1[-1], p2[-1]) # end-end
+                    if d2 < best_dist: best_dist = d2; best_pair = (i, j, 'end-end')
+
+                    d3 = self.distance(p1[0], p2[-1]) # start-end
+                    if d3 < best_dist: best_dist = d3; best_pair = (i, j, 'start-end')
+
+                    d4 = self.distance(p1[0], p2[0]) # start-start
+                    if d4 < best_dist: best_dist = d4; best_pair = (i, j, 'start-start')
+
+            if best_pair and best_dist < max_gap:
+                i, j, mtype = best_pair
+                print(f"  Merging paths {i} and {j} (gap {best_dist:.4f}, {mtype})")
+
+                path_i = paths[i]
+                path_j = paths[j]
+
+                new_path = []
+                if mtype == 'end-start':
+                    new_path = path_i + path_j
+                elif mtype == 'end-end':
+                    new_path = path_i + path_j[::-1]
+                elif mtype == 'start-end':
+                    new_path = path_j + path_i
+                elif mtype == 'start-start':
+                    new_path = path_j[::-1] + path_i
+
+                # Replace path i with new_path, remove path j
+                # Careful with indices. We reconstruct the list.
+                next_paths = []
+                next_paths.append(new_path)
+                for k in range(n):
+                    if k != i and k != j:
+                        next_paths.append(paths[k])
+                paths = next_paths
+            else:
+                break
 
         return paths
 
@@ -235,26 +147,32 @@ class GeometryCleaner:
             print("No raw geometry found.")
             return
 
-        # 'raw_geom' should be a list of lists (MultiLineString coordinates)
-        # If it's just a single list (LineString), wrap it
         if raw_geom and isinstance(raw_geom[0][0], float):
              raw_geom = [raw_geom]
 
-        seamed_paths = self.seam_segments(raw_geom)
+        # 1. Strict Cluster
+        paths = self.cluster_strict(raw_geom, tol=1e-4)
+        print(f"  Strict clustering found {len(paths)} components.")
 
-        print(f"  Result: {len(seamed_paths)} continuous paths.")
+        # 2. Merge Components (Gap Bridging)
+        # Using 0.03 (~3km) as a safe heuristic for rail gaps
+        paths = self.merge_components(paths, max_gap=0.03)
+        print(f"  After merging: {len(paths)} components.")
 
-        # Calculate lengths to identify main lines
+        # 3. Finalize
         final_segments = []
-        for i, path in enumerate(seamed_paths):
-            length = 0
-            for j in range(len(path)-1):
-                length += self.distance(path[j], path[j+1])
+        for i, path in enumerate(paths):
+            length = sum(self.distance(path[j], path[j+1]) for j in range(len(path)-1))
 
-            # Identify round lines (start ~= end)
-            is_loop = self.distance(path[0], path[-1]) < 1e-4
+            # Loop detection
+            d_loop = self.distance(path[0], path[-1])
+            is_loop = d_loop < 0.08 # Tolerance for closing loop
 
-            print(f"  Path {i}: {len(path)} points, Length unit ~{length:.4f}, Loop: {is_loop}")
+            if is_loop:
+                print(f"  Path {i}: Detected loop gap {d_loop:.4f}. Leaving cut.")
+                # We do not append the point, keeping it a LineString "cut" at the gap.
+
+            print(f"  Path {i}: {len(path)} points, Length ~{length:.4f}, Loop: {is_loop}")
 
             final_segments.append({
                 "id": i,
