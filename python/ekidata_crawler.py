@@ -4,6 +4,8 @@ import os
 import http.cookies
 import time
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse, parse_qs
+from email.message import EmailMessage
 from urllib.parse import urljoin
 from worker_base import WorkerProcess
 
@@ -54,32 +56,50 @@ class EkidataWorker(WorkerProcess):
         links = soup.select("a[href*='f.php']") # 锚点定位
 
         self.logger.info(f"解析到 {len(links)} 个潜在文件")
-        self.tracker.start(len(links), self.run_id)
+
+        # 字典结构: {'t值': {'date': 20250101, 'url': 'https://...'}}
+        latest_map = {}
 
         for link in links:
-            href = link.get('href','')
+            href = link.get('href', '')
             full_url = urljoin(self.TARGET_URL, str(href))
 
-            # 文件名提取逻辑
             try:
-                # 假设 url 结构: f.php?t=1&d=20250122...
-                date_part = str(href).split('d=')[1].split('&')[0]
-                filename = f"ekidata_{date_part}.csv"
-            except IndexError:
-                filename = f"ekidata_{int(time.time())}.csv"
+                # 解析 URL 参数
+                parsed_url = urlparse(full_url)
+                params = parse_qs(parsed_url.query)
 
-            save_path = os.path.join(self.DOWNLOAD_DIR, filename)
+                # 获取 t (分类) 和 d (日期)
+                t_vals = params.get('t')
+                d_vals = params.get('d')
 
-            if os.path.exists(save_path):
-                self.logger.info(f"跳过已存在: {filename}")
-                self.tracker.increment(filename)
+                if t_vals and d_vals:
+                    t_val = t_vals[0]
+                    d_val = int(d_vals[0])
+
+                    if t_val not in latest_map or d_val > latest_map[t_val]['date']:
+                        latest_map[t_val] = {
+                            'date': d_val,
+                            'url': full_url
+                        }
+            except Exception as e:
+                self.logger.warning(f"链接解析跳过: {href}, 原因: {e}")
                 continue
 
-            self._download_file(full_url, save_path)
-            self.tracker.increment(filename)
-            time.sleep(2) # 礼貌延时
+        # 对分类 t 进行排序，保证下载顺序
+        sorted_t_keys = sorted(latest_map.keys(), key=lambda x: int(x) if x.isdigit() else x)
+        self.logger.info(f"筛选完成，即将下载 {len(sorted_t_keys)} 个最新文件")
 
-        return f"Completed. Downloaded/Checked {len(links)} files."
+        self.tracker.start(len(sorted_t_keys), self.run_id)
+
+        # 4. 执行下载
+        for t_val in sorted_t_keys:
+            item = latest_map[t_val]
+            self._download_smart(item['url'], self.DOWNLOAD_DIR, item['date'])
+            self.tracker.increment()
+            time.sleep(2)  # 礼貌延时防止封禁
+
+        return f"Completed. Downloaded/Checked {len(sorted_t_keys)} latest files."
 
     def _get_cookies_via_webview(self):
         """启动(隐形)浏览器完成认证并提取Cookie"""
@@ -97,9 +117,7 @@ class EkidataWorker(WorkerProcess):
 
         # 定义认证逻辑 (注入 JS)
         def auth_logic():
-            if not window:
-                return
-            time.sleep(3) # 等待DOM加载
+            time.sleep(2) # 等待DOM加载
             
             self.logger.info("注入登录脚本...")
             js = f"""
@@ -110,7 +128,7 @@ class EkidataWorker(WorkerProcess):
             window.evaluate_js(js)
             
             # 等待跳转和Cookie写入
-            time.sleep(4) 
+            time.sleep(3) 
             
             raw_cookies = window.get_cookies()
             for c in raw_cookies:
@@ -147,18 +165,46 @@ class EkidataWorker(WorkerProcess):
         
         return cookie_dict
 
-    def _download_file(self, url, path):
+    def _download_smart(self, url, save_dir, date_hint):
+        """优先使用响应头中的文件名"""
         try:
-            with self.session.get(url, stream=True) as r:
+
+            with self.session.get(url, stream=True, timeout=30) as r:
                 r.raise_for_status()
-                # 检查是否是 CSV 类型 (防止下载到 HTML)
+
+                # 检查内容类型，防止下载到报错页面
                 if 'text/html' in r.headers.get('Content-Type', ''):
-                    self.logger.warning(f"下载内容疑似为HTML而非文件: {url}")
+                    self.logger.warning(f"目标疑似非文件(HTML): {url}")
                     return
 
-                with open(path, 'wb') as f:
+
+                filename = None
+                content_disposition = r.headers.get('Content-Disposition')
+
+                if content_disposition:
+                    msg = EmailMessage()
+                    msg['content-disposition'] = content_disposition
+                    filename = msg.get_filename()
+
+                # 兜底文件名：如果服务器没给文件名，就自己拼一个
+                if not filename:
+                    filename = f"company{date_hint}.csv"
+
+                # 净化文件名并拼接路径
+                filename = os.path.basename(filename)
+                save_path = os.path.join(save_dir, filename)
+
+                if os.path.exists(save_path):
+                    self.logger.info(f"跳过已存在: {filename}")
+                    return
+
+                # 开始正式写入文件
+                with open(save_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-            self.logger.info(f"下载成功: {os.path.basename(path)}")
+                        if chunk:
+                            f.write(chunk)
+
+                self.logger.info(f"下载成功: {filename}")
+
         except Exception as e:
             self.logger.error(f"下载出错 {url}: {e}")
