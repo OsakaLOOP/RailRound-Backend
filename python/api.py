@@ -58,13 +58,13 @@ class Api:
         except Exception:
             pass
 
-    def open_child_window(self, title, url):
-        """Open a child window for debugging or visualization."""
+    '''def open_child_window(self, title, url):
+        """debug"""
         try:
             import webview
             webview.create_window(title, url, frameless=False, fullscreen=False)
         except Exception as e:
-            logging.error(f"Failed to open child window: {e}")
+            logging.error(e)'''
 
     def retrive_performance_data(self):
         """获取性能数据"""

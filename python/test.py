@@ -149,7 +149,7 @@ if __name__ == '__main__':
     
     window = webview.create_window(
         'Test',
-        url='http://127.0.0.1:5000', # localhost 不够 robust
+        url='http://127.0.0.1:5000', # localhost 可能存在问题
         js_api=api_instance,
         frameless=True,
         text_select=True,

@@ -359,6 +359,7 @@ class line:
         self.rawGeometry = data['geometry']
         self.odptUri = data['uri']
         self.stations = []
+        self.segments = {}
 
         # Visual properties
         self.stroke = data.get('stroke')

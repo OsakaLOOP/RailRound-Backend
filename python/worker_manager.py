@@ -2,10 +2,9 @@ import time
 import threading
 from typing import Dict, Any, Type, Optional
 
-# Import Base Classes
 from worker_base import WorkerProcess, ProgressTracker, WorkerAdapter
 
-# Import Specific Workers
+# 自定义worker类
 from geojson_crawler import GeoJsonWorker
 from ekidata_crawler import EkidataWorker
 from railway_processer import RailwayDataService
@@ -17,14 +16,14 @@ class WorkerRegistry:
     
     @classmethod
     def register(cls, name: str, worker_cls: Type[WorkerProcess]):
-        """Register a worker class with a unique name."""
+        """绑定Worker类和唯一名称的双向字典"""
         if name in cls._name_to_cls:
             if cls._name_to_cls[name] != worker_cls:
-                raise ValueError(f"Worker name '{name}' is already registered to {cls._name_to_cls[name]}")
-            return # Already registered correctly
+                raise ValueError(f"Worker 实例 '{name}' 已注册为 {cls._name_to_cls[name]} 类.")
+            return 
 
         if worker_cls in cls._cls_to_name:
-             raise ValueError(f"Worker class '{worker_cls.__name__}' is already registered as '{cls._cls_to_name[worker_cls]}'.")
+             raise ValueError(f"Worker 类 '{worker_cls.__name__}' 已注册实例 '{cls._cls_to_name[worker_cls]}'.")
         
         cls._name_to_cls[name] = worker_cls
         cls._cls_to_name[worker_cls] = name
@@ -50,23 +49,20 @@ class WorkerManager:
         self._workers: Dict[str, WorkerProcess] = {}
         self._lock = threading.Lock()
 
-        # Railway Data Service
         self.processor = RailwayDataService()
 
-        # Cycle Management
         self.cycle_active = False
     
     def create_worker(self, type_name: str, instance_name: str, **kwargs) -> WorkerProcess:
         
         with self._lock:
             if instance_name in self._workers:
-                raise ValueError(f"Worker instance with name '{instance_name}' already exists.")
+                raise ValueError(f"Worker 已存在: '{instance_name}'.")
             
             worker_cls = WorkerRegistry.get_cls(type_name)
             if not worker_cls:
-                raise ValueError(f"Unknown worker type: '{type_name}'")
+                raise ValueError(f"未知 Worker 类型: '{type_name}'")
             
-            # Instantiate
             worker = worker_cls(name=instance_name, **kwargs)
             self._workers[instance_name] = worker
             return worker
@@ -80,30 +76,27 @@ class WorkerManager:
             return list(self._workers.values())
 
     def start_full_cycle(self):
-        """Starts a full cycle by forcing all workers to run immediately."""
+        """从头开始运行"""
         with self._lock:
             print("[Cycle] Initiating full cycle...")
             self.cycle_active = True
             for worker in self._workers.values():
-                # Force run by setting nextrun to 0 (or past)
                 worker.status['nextrun'] = 0
-                # Reset retries if failed previously
                 if worker.status['statcode'] == 500:
                      worker.status['retry'] = 0
-                     worker.status['statcode'] = 0 # Reset to idle/ready
+                     worker.status['statcode'] = 0 # 重置为 idle/ready
         
     def loop(self):
         while True:
             now = time.time()
             workers_list = self.get_all_workers()
             
-            # 1. Schedule & Monitor Workers
+            # 1. 规划
             for worker in workers_list:
-                # Check status and trigger if needed
+                # 状态检测
                 if worker.status['statcode'] in [0, 200] and now > worker.status.get('nextrun', 0):
                     print(f"[Schedule] Starting run for {worker.name} ({worker.type})")
                     worker.status['retry'] = 0
-                    # Run in a separate thread to not block the manager loop
                     t = threading.Thread(target=worker.run)
                     t.start()
 
@@ -115,40 +108,26 @@ class WorkerManager:
                         t = threading.Thread(target=worker.run)
                         t.start()
                     else:
-                        pass # Give up or wait for manual reset
+                        pass 
 
-            # 2. Cycle Check
+            # 2. 循环
             if self.cycle_active:
-                # Check if ALL workers are finished (statcode is NOT 1)
-                # Note: statcode 1 = Running. 0, 200, 500 are "finished" states.
                 all_finished = True
                 for worker in workers_list:
                     if worker.status['statcode'] == 1:
                         all_finished = False
                         break
 
-                if all_finished and workers_list: # Ensure we have workers
-                    print("[Cycle] All workers finished. Building Railway Data...")
+                if all_finished and workers_list: 
+                    print("[Cycle] 完整运行周期完成. 正在生成格式化数据...")
                     try:
                         self.processor.build()
-                        print("[Cycle] Railway Data built successfully.")
+                        print("[Cycle] 完成数据生成.")
                     except Exception as e:
-                        print(f"[Cycle] Error building Railway Data: {e}")
+                        print(f"[Cycle] 数据生成错误: {e}")
 
                     self.cycle_active = False
 
             time.sleep(1)
 
-# Global Manager Instance
 manager = WorkerManager()
-
-# For backward compatibility or simple usage
-def loop(workers=None):
-    # If workers list is provided, register them loosely or just ignore and use the manager's list
-    # The new design encourages using manager.create_worker() and then manager.loop()
-    if workers:
-        print("Warning: Passing workers list to loop() is deprecated. Use WorkerManager.")
-        for w in workers:
-            pass
-            
-    manager.loop()

@@ -178,7 +178,6 @@ class WorkerProcess(ABC):
         current_time = time.time()
         self.status['uptime'] = current_time - self.status['starttime']
 
-        # Summary Log
         summary = f"Run {self.run_id} Finished. Total Processed: {self.tracker.current}, Time Taken: {round(self.status['uptime'], 2)}s"
 
         if error:

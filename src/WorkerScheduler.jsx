@@ -3,7 +3,7 @@ import { Play, Repeat, StopCircle, Save, Activity, Clock, CheckCircle, AlertCirc
 
 // Reusing style logic from previous WorkerProgressPanel but adapting for inline
 const DetailProgressPanel = ({ workerData }) => {
-  if (!workerData) return <div style={{padding: '20px', color: '#6b7280', textAlign: 'center'}}>Select a worker to view details</div>;
+  if (!workerData) return <div style={{padding: '20px', color: '#6b7280', textAlign: 'center'}}>选择 worker 并查看详情</div>;
 
   const { display_name, status_code, status_text, progress, log_preview } = workerData;
   const { percent = 0, current = 0, total = 0, speed = 0, eta_seconds = 0, error } = progress || {};
@@ -45,7 +45,7 @@ const DetailProgressPanel = ({ workerData }) => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <div style={styles.title}><Activity size={20} /> {display_name} Details</div>
+        <div style={styles.title}><Activity size={20} /> {display_name} 详情</div>
         <span style={styles.badge}>{status_text}</span>
       </div>
 
@@ -55,15 +55,15 @@ const DetailProgressPanel = ({ workerData }) => {
 
       <div style={styles.statsGrid}>
         <div style={styles.statItem}>
-          <span style={styles.statLabel}><CheckCircle size={12} /> Progress</span>
+          <span style={styles.statLabel}><CheckCircle size={12} /> 进度</span>
           <span style={styles.statValue}>{current} / {total} ({percent}%)</span>
         </div>
         <div style={styles.statItem}>
-          <span style={styles.statLabel}><Activity size={12} /> Speed</span>
+          <span style={styles.statLabel}><Activity size={12} /> 速率</span>
           <span style={styles.statValue}>{speed}/s</span>
         </div>
         <div style={styles.statItem}>
-          <span style={styles.statLabel}><Clock size={12} /> ETA</span>
+          <span style={styles.statLabel}><Clock size={12} /> 估算 ETA</span>
           <span style={styles.statValue}>{eta_seconds}s</span>
         </div>
       </div>
@@ -191,8 +191,8 @@ const WorkerScheduler = () => {
             } else {
                 // Mock data
                 setWorkers([
-                    { id: "mock-1", display_name: "Mock GeoJson", type: "geojson", status_code: 1, status_text: "Running", period: 3600, progress: { current: 50, total: 100, percent: 50, eta_seconds: 10, speed: 5 }, log_preview: "Processing..." },
-                    { id: "mock-2", display_name: "Mock Ekidata", type: "ekidata", status_code: 0, status_text: "Idle", period: 7200, progress: { current: 0, total: 0, percent: 0, eta_seconds: 0, speed: 0 }, log_preview: "Ready" }
+                    { id: "mock-1", display_name: "Mock GeoJson", type: "geojson", status_code: 1, status_text: "运行中", period: 3600, progress: { current: 50, total: 100, percent: 50, eta_seconds: 10, speed: 5 }, log_preview: "Processing..." },
+                    { id: "mock-2", display_name: "Mock Ekidata", type: "ekidata", status_code: 0, status_text: "等待/停止", period: 7200, progress: { current: 0, total: 0, percent: 0, eta_seconds: 0, speed: 0 }, log_preview: "Ready" }
                 ]);
             }
         } catch (error) {
@@ -279,7 +279,7 @@ const WorkerScheduler = () => {
     return (
         <div style={styles.container}>
             <div style={styles.header}>
-                <h2 style={styles.title}>Worker Scheduling</h2>
+                <h2 style={styles.title}>Worker 管理</h2>
                 <div style={styles.buttonGroup}>
                     <button
                         onClick={handleStopFullCycle}
@@ -288,7 +288,7 @@ const WorkerScheduler = () => {
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#7f1d1d'}
                     >
                         <StopCircle size={18} />
-                        Stop Cycle
+                        全部停止
                     </button>
                     <button
                         onClick={handleStartFullCycle}
@@ -297,7 +297,7 @@ const WorkerScheduler = () => {
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
                     >
                         <Repeat size={18} />
-                        Run Full Cycle
+                        全部开始
                     </button>
                 </div>
             </div>
@@ -306,12 +306,12 @@ const WorkerScheduler = () => {
                 <table style={styles.table}>
                     <thead>
                         <tr>
-                            <th style={styles.th}>Worker Name</th>
-                            <th style={styles.th}>Type</th>
-                            <th style={styles.th}>Status</th>
-                            <th style={{...styles.th, width: '30%'}}>Progress</th>
-                            <th style={styles.th}>Period (s)</th>
-                            <th style={{...styles.th, textAlign: 'right'}}>Actions</th>
+                            <th style={styles.th}>名称</th>
+                            <th style={styles.th}>类型</th>
+                            <th style={styles.th}>状态</th>
+                            <th style={{...styles.th, width: '30%'}}>进度</th>
+                            <th style={styles.th}>周期 (s)</th>
+                            <th style={{...styles.th, textAlign: 'right'}}>操作</th>
                         </tr>
                     </thead>
                     <tbody>
