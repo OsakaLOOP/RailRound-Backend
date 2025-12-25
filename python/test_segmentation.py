@@ -156,7 +156,7 @@ def visualize(original_geometry, segments, partial_segments, stations, knives, o
         ).add_to(m)
 
     m.save(output_path)
-    logger.info(f"Visualization saved to {output_path}")
+    logger.info(f"Visualization saved to: file://{output_path}")
 
 if __name__ == "__main__":
     run_test()
