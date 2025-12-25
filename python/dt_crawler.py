@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, parse_qs
 
 
-# --- 配置区域 ---
+# 配置区域
 class Config:
     LOGIN_URL = "https://ekidata.jp//dl/"
     TARGET_URL = "https://ekidata.jp/dl/?p=1"
@@ -27,7 +27,7 @@ class Config:
     DEBUG_MODE = False
 
 
-# --- 日志设置 ---
+# 日志设置
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [Ekidata] - %(message)s',
@@ -175,13 +175,13 @@ class CrawlerService:
 
                 filename = None
                 content_disposition = r.headers.get('Content-Disposition')
-
+                # 通过 Content-Disposition header 来获取默认文件名
                 if content_disposition:
                     msg = EmailMessage()
                     msg['content-disposition'] = content_disposition
                     filename = msg.get_filename()
 
-                # 兜底文件名：如果服务器没给文件名，就自己拼一个
+                # 备用文件名生成
                 if not filename:
                     filename = f"company{date_hint}.csv"
 

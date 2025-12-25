@@ -112,7 +112,7 @@ webview_handler = WebviewHandler()
 
 webview_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 
-# Attach webview handler to root logger so it captures everything including workers
+# 定义 Webview handler 作为根日志管理
 logger.addHandler(webview_handler)
 frontend_logger.addHandler(python_handler)
 

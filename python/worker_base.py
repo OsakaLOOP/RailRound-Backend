@@ -135,23 +135,21 @@ class WorkerProcess(ABC):
 
     def _setup_logger(self):
         '''配置独立 Logger'''
-        # 1. 创建 Logger 对象 (使用唯一名称)
+        # 1. 创建 Logger
         logger = logging.getLogger(f"Worker.{self.name}")
         logger.setLevel(logging.INFO)
 
-        # 2. 防止重复添加 Handler (关键：避免多重打印)
+        # 2. 防止重复添加 Handler
         if not logger.hasHandlers():
-            # 3. 确保日志目录存在
             if not os.path.exists(self.log_dir):
                 os.makedirs(self.log_dir)
 
-            # 4. 定义格式
             formatter = logging.Formatter(
                 '[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s',
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
 
-            # 5. Handler A: 文件输出 (logs/WorkerName.log)
+            # 3. 文件输出
             file_handler = logging.FileHandler(
                 os.path.join(self.log_dir, f"{self.name}.log"),
                 encoding='utf-8'
@@ -159,7 +157,7 @@ class WorkerProcess(ABC):
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
 
-            # 6. Handler B: 控制台输出
+            # 4. 控制台输出
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(formatter)
             logger.addHandler(console_handler)
@@ -217,20 +215,20 @@ class WorkerProcess(ABC):
         # 抽象统一流程
         self._pre_run()
 
-        # 子类一定要调用tracker.start()!!!
+        # 子类一定要调用tracker.start()!!!!!
 
         try:
             result_msg = self.trigger()
             self._post_run(result_msg)
 
         except Exception as e:
-            # 统一的错误兜底
+            # 统一的错误处理
             self.logger.exception("Critical Failure")
             self.tracker.recErr(str(e))
             self._post_run(None, error=e)
 
     def mark_failed(self):
-        """标记为失败并增加重试计数"""
+        """标记为失败, 并计数"""
         self.status['retry'] += 1
 
     # 抽象子类定义

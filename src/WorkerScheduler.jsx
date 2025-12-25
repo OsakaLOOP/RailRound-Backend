@@ -395,7 +395,7 @@ const WorkerScheduler = () => {
                                             }}
                                         >
                                             <Play size={14} />
-                                            Run
+                                            运行
                                         </button>
                                     </td>
                                 </tr>
