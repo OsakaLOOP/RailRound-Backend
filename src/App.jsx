@@ -50,7 +50,7 @@ function App() {
               </button>
             </div>
             */}
-            <div style={{ display: 'flex',height:'100%', width: '100%', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ display: 'flex',height:'90%', width: '100%', position: 'relative', overflow: 'hidden' }}>
               <iframe
                 src="https://railround.s3xyseia.xyz/"
                 style={{ width: '100%', height: '100%', border: 'none' }}
