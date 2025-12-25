@@ -50,6 +50,8 @@ class GeoJsonWorker(WorkerProcess):
 
         # 2. 遍历处理
         for company_name in list(companies.keys()):
+            if company_name != '東日本旅客鉄道':
+                pass
             filename = os.path.join(self.output_dir, f"{company_name}.geojson")
 
             if os.path.exists(filename):
