@@ -9,6 +9,7 @@ from worker_base import WorkerProcess, ProgressTracker, WorkerAdapter
 from geojson_crawler import GeoJsonWorker
 from ekidata_crawler import EkidataWorker
 from railway_processer import RailwayDataService
+from line_segmenter import LineSegmenter
 
 class WorkerRegistry:
     _name_to_cls: Dict[str, Type[WorkerProcess]] = {}
@@ -42,7 +43,7 @@ class WorkerRegistry:
 
 WorkerRegistry.register("geojson", GeoJsonWorker)
 WorkerRegistry.register("ekidata", EkidataWorker)
-
+#WorkerRegistry.register("Line Segmentation", LineSegmenter)
 
 class WorkerManager:
     def __init__(self):

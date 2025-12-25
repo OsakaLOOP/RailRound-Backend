@@ -18,6 +18,7 @@ dist_dir = os.path.join(base_dir, '..', 'dist')
 
 app = Flask(__name__, static_folder=dist_dir, template_folder=dist_dir, static_url_path='')
 #app.register_blueprint(api_router, url_prefix='/api')
+
 # ./路由
 @app.before_request
 def log_request_info():
@@ -115,11 +116,6 @@ webview_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
 logger.addHandler(webview_handler)
 frontend_logger.addHandler(python_handler)
 
-# Also expose webview_handler globally so workers can find it if needed (though root logger propagation usually suffices)
-# But workers use separate loggers "Worker.xxx".
-# If they propagate (default is True), they hit root logger.
-# But worker_base.py does `logger = logging.getLogger(...)`.
-# Let's ensure root logger level allows debug if needed, though workers set their own level.
 
 #模拟
 def run(window):

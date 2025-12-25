@@ -21,13 +21,13 @@ function App() {
           onClick={() => setActiveTab('webapp')}
           className={`tab-button ${activeTab === 'webapp' ? 'active' : ''}`}
         >
-          Web App
+          网页端展示
         </button>
         <button
           onClick={() => setActiveTab('workers')}
           className={`tab-button ${activeTab === 'workers' ? 'active' : ''}`}
         >
-          Backend Worker Scheduling
+          后端 Worker 管理
         </button>
       </div>
 

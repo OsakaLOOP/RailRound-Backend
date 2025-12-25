@@ -24,7 +24,7 @@ class Config:
     SELECTOR_BTN = "input[type='submit']"
 
     DOWNLOAD_DIR = "./downloads"
-    DEBUG_MODE = True
+    DEBUG_MODE = False
 
 
 # --- 日志设置 ---
