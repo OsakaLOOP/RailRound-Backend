@@ -60,6 +60,8 @@
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-content.no-scroll {
