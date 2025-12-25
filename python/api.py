@@ -62,7 +62,7 @@ class Api:
         """Open a child window for debugging or visualization."""
         try:
             import webview
-            webview.create_window(title, url)
+            webview.create_window(title, url, frameless=False, fullscreen=False)
         except Exception as e:
             logging.error(f"Failed to open child window: {e}")
 
