@@ -12,7 +12,7 @@ from shapely.geometry import Point, Polygon, LineString, MultiLineString, shape
 
 logger = logging.getLogger()
 
-# --- Normalization Helpers (Copied from python/1.py) ---
+# 辅助函数
 def normalize_name(name: str) -> str:
     """Normalizes string for basic comparison (strip whitespace)."""
     if not name:
@@ -102,18 +102,17 @@ class ekidata_company:
         self.line_df = load_csv(line_path)
         self.station_df = load_csv(station_path) if station_path else pd.DataFrame()
 
-        self.companyDict = {} # Mapping by Company Name (Cleaned)
-        self._id_to_name_map = {} # Mapping by Company CD -> Company Name
-        self.ekidata_lines = {} # company_cd -> { line_cd -> {name, alias, data} }
-        self.ekidata_stations = {} # line_cd -> [ {station_cd, station_g_cd, name, ...} ]
+        self.companyDict = {}
+        self._id_to_name_map = {}
+        self.ekidata_lines = {}
+        self.ekidata_stations = {}
 
-        # 1. Process Company Data
         for row in self.df_merged.itertuples():
             c_name = clean_name(getattr(row, 'company_name_h', ''))
             c_cd = getattr(row, 'company_cd', None)
             rr_cd = getattr(row, 'rr_cd', None)
-
-            # Store mapping
+            
+            # 基于名称的映射
             self.companyDict[c_name] = {
                 "cd": c_cd,
                 "rr_cd": rr_cd,
@@ -133,7 +132,6 @@ class ekidata_company:
             l_alias = getattr(row, 'line_name', '')
             
             if l_comp_cd and l_cd:
-                # Add to lookup
                 if l_comp_cd in self.ekidata_lines:
                     self.ekidata_lines[l_comp_cd][l_cd] = {
                         "line_cd": l_cd,
@@ -142,7 +140,6 @@ class ekidata_company:
                         "alias": l_alias
                     }
 
-                    # Update companyDict (legacy support)
                     c_name = self._id_to_name_map.get(l_comp_cd)
                     if c_name and c_name in self.companyDict:
                         self.companyDict[c_name]["lines"][l_cd] = [l_name_h, l_alias]
@@ -206,8 +203,6 @@ class company:
         elif self.alias and self.alias in e.companyDict:
             self.cd, self.rr, self.ekidataLineDict = e.match(self.alias)
         elif not (self.type in ['cableline','disneyline']):
-            # If not found, we still want to process it, possibly generating mock IDs later.
-            # But the service tracks missing companies elsewhere.
             pass
         
     def get_category(self):
@@ -216,7 +211,6 @@ class company:
     
     def load_feature(self):
         '''加载 geojson 为 rawFeatures'''
-        # Use configurable path if available, else default
         geojson_dir = "./public/geojson"
         if self.service and hasattr(self.service, 'geojson_dir'):
              geojson_dir = self.service.geojson_dir
@@ -314,16 +308,15 @@ class company:
                     if line_of_station in self.line_registry:
                         self.line_registry[line_of_station].append(stationInstance)
                     else: 
-                        # logger.warning(f"line of station {properties.get('name')} not registered or mismatch.")
+                        logger.warning(f"给定站点 {properties.get('name')} 的线路无匹配.")
                         pass
                 except Exception as e:
                     logger.error(f"Error processing station feature in GeoJSON file: {path} - {e}")
             else:
-                pass # Already handled or unknown
+                pass #
             
         for i in self.lineList:
             i.load_stations()
-            # print(i.stations)
         
     
     def load_lines(self, lineStr):
@@ -459,12 +452,10 @@ class station:
              self.assign_mock_id()
              return
 
-        # 1. If Line is Mocked, Station MUST be Mocked
         if self.line.is_mock:
             self.assign_mock_id()
             return
 
-        # 2. Search in Ekidata Line
         line_cd = self.line.id
         candidates = ekidata.ekidata_stations.get(line_cd, [])
 
@@ -474,7 +465,6 @@ class station:
         
         best_match = None
 
-        # Priority 1: Exact / Advanced Match
         for s_data in candidates:
             e_name = normalize_name(s_data['name'])
             e_adv = normalize_advanced(s_data['name'])
@@ -483,17 +473,14 @@ class station:
                 best_match = s_data
                 break
 
-        # Priority 2: Fuzzy LCS (Only if no exact match)
         if not best_match:
              best_score = 0
              for s_data in candidates:
                  score = get_lcs_length(cleaned_fuzzy, s_data['name'])
-                 # Threshold: > 2 chars and reasonable coverage
                  if score > best_score and score >= 2:
                      best_score = score
                      best_match = s_data
 
-             # If score is too low, don't guess
              if best_score < 2:
                  best_match = None
 
@@ -510,9 +497,7 @@ class station:
         line_id = self.line.id if self.line else 0
         unique_str = f"{line_id}_{self.name}"
         hash_val = int(hashlib.md5(unique_str.encode('utf-8')).hexdigest(), 16)
-        # Mock Range: 8000000 + (hash % 1000000)
         self.id = 8000000 + (hash_val % 1000000)
-        # Default gid to id initially, will be merged later
         self.gid = self.id
 
     def find_group(self, stationGroupLst, stationGroupNameMap=None):
@@ -520,7 +505,6 @@ class station:
 
         norm_name = normalize_name(self.name)
 
-        # Helper to register group in map
         def register_group(sg):
              for s in sg.stations:
                  n = normalize_name(s.name)
@@ -529,20 +513,7 @@ class station:
                  if sg not in stationGroupNameMap[n]:
                      stationGroupNameMap[n].append(sg)
 
-        # 1. If we have a Real GID, we just look for that Group or create one
         if not self.is_mock and self.gid:
-            # Optimization: Can we lookup by GID?
-            # Current structure is List, so we still iterate?
-            # Or we trust that if we built it, it's there.
-            # For now, linear scan for GID is "okay" if we assume GID uniqueness prevents too many dupes,
-            # but ideally we'd map GID->Group too.
-            # BUT, let's stick to the map optimization for Name first.
-
-            # Legacy linear search for GID (safe but maybe slow if many groups)
-            # To optimize: stationGroupNameMap could help if we search by name?
-            # But GID is authoritative.
-
-            # Let's try to find by Name first (likely shares name) to narrow search?
             candidates = []
             if stationGroupNameMap is not None and norm_name in stationGroupNameMap:
                 candidates = stationGroupNameMap[norm_name]
@@ -553,7 +524,6 @@ class station:
                     found_sg = sg
                     break
 
-            # Fallback to full list if not in candidates (unlikely if name matches)
             if not found_sg:
                 for sg in stationGroupLst:
                     if sg.id == self.gid:
@@ -565,38 +535,28 @@ class station:
                  if stationGroupNameMap is not None: register_group(found_sg)
                  return found_sg
             
-            # Create new group with this Real GID
             new_sg = stationGroup([self, self.transferLst], id_override=self.gid)
             stationGroupLst.append(new_sg)
             if stationGroupNameMap is not None: register_group(new_sg)
             return new_sg
 
-        # 2. If Mock, we need to be smart.
-        # Logic: Check existing groups (Real or Mock).
-        # Match if: Name is similar AND Distance < 500m
 
         best_sg = None
         min_dist = float('inf')
 
-        # Optimization: Only look at groups that have a station with the same name!
         candidates = []
         if stationGroupNameMap is not None:
-             # Trust the map! If not in map, no such group exists yet.
              if norm_name in stationGroupNameMap:
                  candidates = stationGroupNameMap[norm_name]
              else:
                  candidates = []
         else:
-            # Fallback: if map not provided (legacy test), iterate all
             candidates = stationGroupLst
         
         for sg in candidates:
-            # Check proximity to any station in the group
             dist = sg.distance_to(self.location)
 
             if dist < 0.5: # 500m
-                 # Name match is guaranteed if we came from the map
-                 # But if we are iterating full list (fallback), we check name
                  if stationGroupNameMap is None:
                      name_match = False
                      for s in sg.stations:
@@ -616,8 +576,6 @@ class station:
             if stationGroupNameMap is not None: register_group(best_sg)
             return best_sg
         else:
-            # Create new Mock Group
-            # Use station's Mock ID as Group ID
             new_sg = stationGroup([self, self.transferLst], id_override=self.gid)
             stationGroupLst.append(new_sg)
             if stationGroupNameMap is not None: register_group(new_sg)
@@ -642,14 +600,11 @@ class stationGroup:
     def add_station(self, s: station):
         self.stations.append(s)
         s.group = self
-        # Update center?
-        # Keep simple for now
 
     def distance_to(self, point: Point):
         return calculate_distance((self.center.x, self.center.y), (point.x, point.y))
 
     def in_group(self, station):
-        # Legacy stub
         pass
 
 def pprint(lst):
@@ -704,19 +659,16 @@ class RailwayDataService:
             c = company(company_data[i], service_instance=self)
             temp_company_list.append(c)
 
-        # Load features and meta
         for i in temp_company_list:
             i.load_feature()
             i.load_meta()
 
-        # Build Station Groups (Consolidate)
         self.stationGroupList = []
-        self.stationGroupNameMap = {} # Optimization: name -> [group, ...]
+        self.stationGroupNameMap = {}
 
         for c in temp_company_list:
             for line in c.lineList:
                 for st in line.stations:
-                     # This will link stations to existing groups or create new ones
                      st.find_group(self.stationGroupList, self.stationGroupNameMap)
 
         # Atomic swap
@@ -727,17 +679,15 @@ class RailwayDataService:
         self.save_to_db()
 
     def save_to_db(self):
-        """Saves the current state to SQLite."""
-        logger.info(f"Saving to SQLite: {self.db_path}")
+        """SQLite db存储"""
+        logger.info(f"保存到db: {self.db_path}")
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # Drop tables to ensure schema update
         cursor.execute("DROP TABLE IF EXISTS stations")
         cursor.execute("DROP TABLE IF EXISTS lines")
         cursor.execute("DROP TABLE IF EXISTS companies")
 
-        # Create Tables
         cursor.execute('''
             CREATE TABLE companies (
                 id TEXT PRIMARY KEY,
@@ -790,7 +740,7 @@ class RailwayDataService:
 
         conn.commit()
         conn.close()
-        logger.info("Database save complete.")
+        logger.info("db存储完成.")
 
 if __name__ == "__main__":
     service = RailwayDataService()
