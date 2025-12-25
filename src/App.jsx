@@ -37,6 +37,7 @@ function App() {
         {/* Web App View */}
         {activeTab === 'webapp' && (
           <div className="tab-content">
+            {/*
             <div style={{ padding: '20px' }}>
               <h1>Debug App</h1>
               <p>Click the button below to test the console</p>
@@ -47,6 +48,14 @@ function App() {
               >
                 Generate Log (Count: {count})
               </button>
+            </div>
+            */}
+            <div style={{ width: '100%', height: '100%' }}>
+              <iframe
+                src="https://railround.s3xyseia.xyz/"
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                title="RailRound App"
+              />
             </div>
           </div>
         )}
