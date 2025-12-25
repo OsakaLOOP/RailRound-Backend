@@ -320,7 +320,30 @@ const ConsolePanel = () => {
                  <span style={{color: '#64748b', flexShrink: 0}}>[{log.time}]</span>
                  {getSourceBadge(log.source)}
                  <span style={{fontWeight: 'bold', textTransform: 'uppercase', flexShrink: 0, minWidth: '40px'}}>{log.level}</span>
-                 <span style={{wordBreak: 'break-all', whiteSpace: 'pre-wrap', flex: 1}}>{log.message}</span>
+                 <span style={{wordBreak: 'break-all', whiteSpace: 'pre-wrap', flex: 1}}>
+                  {log.message.split(/(file:\/\/[^\s]+)/g).map((part, i) => {
+                    if (part.match(/(file:\/\/[^\s]+)/)) {
+                      return (
+                        <span
+                          key={i}
+                          style={{textDecoration: 'underline', cursor: 'pointer', color: '#60a5fa'}}
+                          onClick={() => {
+                            if (window.pywebview && window.pywebview.api && window.pywebview.api.open_child_window) {
+                                // Extract standard path if possible, or pass URI
+                                // webview.create_window needs URL. file:// is valid.
+                                window.pywebview.api.open_child_window("Debug View", part);
+                            } else {
+                                console.warn("Cannot open window: API not available");
+                            }
+                          }}
+                        >
+                          {part}
+                        </span>
+                      );
+                    }
+                    return part;
+                  })}
+                 </span>
                </div>
              ))}
              <div ref={bottomRef} /> 
