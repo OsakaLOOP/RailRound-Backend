@@ -83,14 +83,6 @@ def run_test():
 
     if FOLIUM_AVAILABLE:
         visualize(line_geometry, segments, segmenter.debug_partial_segments, stations, segmenter.debug_knives, output_path)
-
-        # Open in Webview
-        if WEBVIEW_AVAILABLE:
-            logger.info("Opening visualization in window...")
-            webview.create_window("Segmentation Debug", f"file://{output_path}", frameless=False, fullscreen=False)
-            webview.start()
-        else:
-            logger.info(f"Pywebview not available. Open {output_path} manually.")
     else:
         logger.warning("Folium not installed. Skipping visualization.")
 
