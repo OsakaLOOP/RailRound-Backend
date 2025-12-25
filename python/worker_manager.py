@@ -78,7 +78,7 @@ class WorkerManager:
     def start_full_cycle(self):
         """从头开始运行"""
         with self._lock:
-            print("[Cycle] Initiating full cycle...")
+            print("[周期] 全周期运行...")
             self.cycle_active = True
             for worker in self._workers.values():
                 worker.status['nextrun'] = 0
@@ -95,7 +95,7 @@ class WorkerManager:
             for worker in workers_list:
                 # 状态检测
                 if worker.status['statcode'] in [0, 200] and now > worker.status.get('nextrun', 0):
-                    print(f"[Schedule] Starting run for {worker.name} ({worker.type})")
+                    print(f"[周期] 开始运行 {worker.name} ({worker.type})")
                     worker.status['retry'] = 0
                     t = threading.Thread(target=worker.run)
                     t.start()

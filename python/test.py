@@ -24,7 +24,7 @@ app = Flask(__name__, static_folder=dist_dir, template_folder=dist_dir, static_u
 def log_request_info():
     # Flask debug
     if not request.path.endswith('.js') and not request.path.endswith('.css'):
-        print(f"[Dev] Incoming Request: {request.method} {request.path}")
+        print(f"[Dev] 网络请求: {request.method} {request.path}")
 
 
 @app.route('/')
@@ -68,14 +68,14 @@ class WebviewHandler(logging.Handler):
 
     def on_loaded(self):
         self.is_ready = True
-        print(f"[System] Frontend loaded. Flushing {len(self.queue)} queued logs...")
+        print(f"[System] 前端已加载. 处理 {len(self.queue)} 条log...")
         self.flush_queue()
         
     def on_closed(self):
         """
         安全回调, 防止后台线程向已销毁的 WebView2 控件发送日志
         """
-        print("[System] Window closed. Detaching log handler.")
+        print("[System] 安全终止线程中.")
         self._window = None
         self.is_ready = False
     
@@ -142,10 +142,10 @@ if __name__ == '__main__':
     t.start()
     logger.info("Starting Flask server...")
     if not wait_for_server():
-        print("Fatal: Server failed to start.")
+        print("Fatal: 服务器未运行.")
         sys.exit(1)
     else:
-        print("TCP port is open.")
+        print("TCP 端口开始监听.")
     
     window = webview.create_window(
         'Test',

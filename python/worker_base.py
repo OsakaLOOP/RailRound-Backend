@@ -208,7 +208,7 @@ class WorkerProcess(ABC):
         }
 
     def _get_status_text(self, code):
-        mapping = {0: "Idle", 1: "Running", 200: "Done", 500: "Error"}
+        mapping = {0: "待机", 1: "运行中", 200: "完成", 500: "错误"}
         return mapping.get(code, "Unknown")
 
     def run(self):

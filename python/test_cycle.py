@@ -12,7 +12,7 @@ from worker_manager import manager, WorkerRegistry, WorkerProcess
 WorkerRegistry.register("mock", MockWorker)'''
 
 def test_cycle():
-    print("Setting up test...")
+    print("开始测试...")
     manager.create_worker("mock", "worker1", period=9999, type_str="mock")
     manager.create_worker("mock", "worker2", period=9999, type_str="mock")
 

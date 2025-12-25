@@ -20,7 +20,7 @@
   height: 100vh;
   background-color: var(--bg-dark);
   color: var(--text-white);
-  padding-top: 48px; /* For TitleBar */
+  padding-top: 40px; /* For TitleBar */
 }
 
 .tab-bar {
@@ -52,14 +52,14 @@
 
 .content-area {
   flex: 1;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
 }
 
 .tab-content {
   position: absolute;
   inset: 0;
-  overflow-y: auto;
+  overflow-y: visible;
   display: flex;
   flex-direction: column;
 }
