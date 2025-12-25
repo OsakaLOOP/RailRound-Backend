@@ -3,6 +3,7 @@ import logging
 import os
 from shapely.geometry import shape, MultiLineString
 from line_segmenter import LineSegmenter
+import sys
 
 # Optional dependency for visualization
 try:
@@ -10,6 +11,13 @@ try:
     FOLIUM_AVAILABLE = True
 except ImportError:
     FOLIUM_AVAILABLE = False
+
+# Pywebview dependency
+try:
+    import webview
+    WEBVIEW_AVAILABLE = True
+except ImportError:
+    WEBVIEW_AVAILABLE = False
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -71,12 +79,22 @@ def run_test():
         print(f"{start} <--> {end} : Length approx {geom.length:.5f} deg")
 
     # Generate Visualization
+    output_path = os.path.abspath("public/debug_segmentation.html")
+
     if FOLIUM_AVAILABLE:
-        visualize(line_geometry, segments, segmenter.debug_partial_segments, stations, segmenter.debug_knives)
+        visualize(line_geometry, segments, segmenter.debug_partial_segments, stations, segmenter.debug_knives, output_path)
+
+        # Open in Webview
+        if WEBVIEW_AVAILABLE:
+            logger.info("Opening visualization in window...")
+            webview.create_window("Segmentation Debug", f"file://{output_path}", frameless=False, fullscreen=False)
+            webview.start()
+        else:
+            logger.info(f"Pywebview not available. Open {output_path} manually.")
     else:
         logger.warning("Folium not installed. Skipping visualization.")
 
-def visualize(original_geometry, segments, partial_segments, stations, knives):
+def visualize(original_geometry, segments, partial_segments, stations, knives, output_path):
     # Calculate center for map
     center_pt = original_geometry.centroid
     m = folium.Map(location=[center_pt.y, center_pt.x], zoom_start=10)
@@ -137,7 +155,6 @@ def visualize(original_geometry, segments, partial_segments, stations, knives):
             popup=s['name']
         ).add_to(m)
 
-    output_path = "public/debug_segmentation.html"
     m.save(output_path)
     logger.info(f"Visualization saved to {output_path}")
 
