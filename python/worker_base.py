@@ -19,6 +19,9 @@ class ProgressTracker:
         self.error = 0
         self._errors = []
         self.run_id = ''
+        self.last_update_time = 0
+        self.current_speed = 0.0
+        self._item = "Ready"
 
     def start(self, total: int, run_id: str = ''):
         '''开始任务'''
@@ -26,11 +29,35 @@ class ProgressTracker:
             self.total = total
             self.current = 0
             self.start_time = time.time()
+            self.last_update_time = self.start_time
+            self.current_speed = 0.0
             self.run_id = run_id
+            self._item = "Started"
+
+    def _recalc_speed(self, delta_items: int):
+        """Internal helper to calculate instantaneous speed"""
+        now = time.time()
+        time_delta = now - self.last_update_time
+
+        # Avoid division by zero and extremely small intervals
+        if time_delta > 0.001:
+            # Speed = items / seconds
+            speed = delta_items / time_delta
+            self.current_speed = round(speed, 2)
+        elif delta_items > 0:
+             # If time delta is too small but we processed items,
+             # we might want to skip update or assume very fast.
+             # For robustness, we just keep previous speed or do nothing to avoid spike.
+             pass
+
+        self.last_update_time = now
 
     def update(self, current: int):
         '''更新进度'''
         with self._lock:
+            delta = current - self.current
+            if delta > 0:
+                self._recalc_speed(delta)
             self.current = current
 
     def get_snapshot(self):
@@ -47,13 +74,10 @@ class ProgressTracker:
 
             # 3. ETA 计算 (核心)
             eta_seconds = 0
-            speed = 0
-            if self.current > 0:
-                # 平均处理速度 (秒/个)
-                avg_time_per_item = elapsed / self.current
-                remaining_items = self.total - self.current
-                eta_seconds = int(avg_time_per_item * remaining_items)
-                speed = round(self.current / elapsed, 2) # 个/秒
+            # Use current_speed if available and positive
+            if self.current_speed > 0:
+                 remaining_items = self.total - self.current
+                 eta_seconds = int(remaining_items / self.current_speed)
 
             # 4. 格式化输出 (给人类看的)
             return {
@@ -61,14 +85,12 @@ class ProgressTracker:
                 "percent": f"{percent}%",
                 "elapsed": f"{int(elapsed)}s",
                 "eta": f"{eta_seconds}s",  # 剩余秒数
-                "speed": f"{speed}/s"      # 速度
+                "speed": f"{self.current_speed}/s"      # 速度
             }
 
     def get_view_model(self):
         '''为前端生成数据字典'''
         with self._lock:
-            elapsed = time.time() - self.start_time
-
             # 基础计算
             percent = 0
             if self.total > 0:
@@ -76,20 +98,18 @@ class ProgressTracker:
 
             # ETA 计算
             eta = 0
-            speed = 0.0
-            if self.current > 0 and self.total > 0:
-                avg_time = elapsed / self.current
-                eta = int(avg_time * (self.total - self.current))
-                speed = round(self.current / elapsed, 2)
+            if self.current_speed > 0 and self.total > 0:
+                eta = int((self.total - self.current) / self.current_speed)
 
             return {
                 "current": self.current,
                 "total": self.total,
                 "percent": percent,
                 "eta_seconds": eta,
-                "speed": speed,
+                "speed": self.current_speed,
                 "error": self.error,
                 "run_id": self.run_id,
+                "latest_log": self._item,
                 # 如果 current < total 且 total > 0，认为 active
                 "is_active": (self.current < self.total) and (self.total > 0)
             }
@@ -97,6 +117,7 @@ class ProgressTracker:
     def increment(self, item= None):
         '''进度+1'''
         with self._lock:
+            self._recalc_speed(1)
             self.current += 1
             if item is not None:
                 self._item = item
@@ -194,6 +215,12 @@ class WorkerProcess(ABC):
         # 获取进度快照
         prog_data = self.tracker.get_view_model()
 
+        # Decide log preview
+        log_preview = str(self.status.get('lastreturn') or "Ready")[:50]
+        if self.status['statcode'] == 1:
+            # If running, show the latest log from tracker
+            log_preview = prog_data.get('latest_log', 'Running...')[:50]
+
         return {
             "id": self.name,# React key
             "display_name": self.name,
@@ -204,7 +231,7 @@ class WorkerProcess(ABC):
             "progress": prog_data,
             "last_update_ts": time.time(),
 
-            "log_preview": str(self.status.get('lastreturn') or "Ready")[:50]
+            "log_preview": log_preview
         }
 
     def _get_status_text(self, code):
